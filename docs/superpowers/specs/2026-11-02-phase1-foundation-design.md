@@ -1,8 +1,8 @@
 # VPS Sentinel — Phase 1 « Foundation » — Spécification de conception
 
 **Date :** 2026-11-02
-**Version :** 2 (intègre la revue architecturale et les arbitrages Q1 à Q9)
-**Statut :** À valider
+**Version :** 2.1 (intègre la revue architecturale, les arbitrages Q1 à Q9 et les précisions de la phase 0)
+**Statut :** Validée le 2026-11-02
 **Référence :** [TAD v1.0](../../architecture/TAD-v1.0.md). Les renvois « TAD §x » pointent vers ce document ; les renvois « §x » sans préfixe pointent vers la présente spec.
 
 ## Historique des révisions
@@ -11,6 +11,7 @@
 |---|---|---|
 | 1 | 2026-11-02 | Première version (commit `ec8065e`) |
 | 2 | 2026-11-02 | Intégration des 10 MUST FIX et des SHOULD FIX retenus de la revue, des arbitrages Q1 à Q9 et des précisions sur l'audit des identifiants et la concurrence des refresh tokens. Suivi détaillé en annexe A |
+| 2.1 | 2026-11-02 | Validation. JUnit Jupiter 6, version gérée par Spring Boot 4.1 (§4). Précisions issues de la phase 0 : ports de dev publiés sur la boucle locale (§6.3) ; volume PostgreSQL 18 monté sur `/var/lib/postgresql` (§6.1) ; `TEMPORARY` retiré et bases `postgres` et `template1` fermées à `PUBLIC` (§6.5, §13.5) |
 
 ---
 
@@ -76,7 +77,7 @@ Versions relevées le 2026-11-02. Le plan d'implémentation les fige et vérifie
 | Frontend | Vite 8, React 19, Mantine 9, TanStack Query 5, React Router 8 |
 | TypeScript | Dernière version compatible avec `openapi-typescript`, `typescript-eslint` et Vite. TypeScript 7 (compilateur natif) est exclu tant que ces outils ne le prennent pas en charge |
 | Client API | `openapi-typescript` + `openapi-fetch` |
-| Tests backend | JUnit 5, Testcontainers dans une version compatible avec Docker Engine 29 (API ≥ 1.44), Spring Modulith test |
+| Tests backend | JUnit Jupiter 6 (version gérée par Spring Boot 4.1), Testcontainers dans une version compatible avec Docker Engine 29 (API ≥ 1.44), Spring Modulith test |
 | Tests frontend | Vitest, React Testing Library, MSW |
 | E2E | Playwright (Chromium) |
 | Gateway | Nginx, image officielle stable |
@@ -168,7 +169,7 @@ Ces fichiers constituent le **premier commit** de l'implémentation, avant tout 
 
 | Service | Image | Réseaux | Rôle |
 |---|---|---|---|
-| `postgres` | postgres:18 | data | Base métier, volume persistant `pgdata`, création des rôles au premier démarrage (§6.5) |
+| `postgres` | postgres:18 | data | Base métier, volume persistant `pgdata` monté sur `/var/lib/postgresql` (l'image PostgreSQL 18 refuse l'ancien montage sur `…/data`), création des rôles au premier démarrage (§6.5) |
 | `migrate` | image construite avec `services/core-api/Dockerfile.migrate` (base `flyway/flyway`, migrations copiées) | data | Conteneur ponctuel : `flyway migrate` avec le rôle `sentinel_owner`, puis arrêt |
 | `core-api` | eclipse-temurin:25-jre (build multi-stage avec `-jdk`) | app, data | API REST, rôle `sentinel_app` |
 | `frontend` | nginx (build statique multi-stage) | app | Sert le build Vite, avec `try_files … /index.html` pour les routes du SPA |
@@ -195,7 +196,7 @@ Compose additionne les listes `ports` d'un fichier de surcharge au lieu de les r
 | Fichier | Contenu |
 |---|---|
 | `docker-compose.yml` | `name: vps-sentinel` ; les 5 services, les 3 réseaux, les volumes, les secrets ; **aucun port publié** ; ni configuration Nginx ni certificat |
-| `docker-compose.dev.yml` | gateway : `nginx.dev.conf`, HTTP, `8088:80` ; postgres : `5432:5432` ; secrets lus dans `infrastructure/secrets/dev/` |
+| `docker-compose.dev.yml` | gateway : `nginx.dev.conf`, HTTP, `127.0.0.1:8088:80` ; postgres : `127.0.0.1:5432:5432` ; ports publiés sur la boucle locale uniquement, jamais sur le réseau local ; secrets lus dans `infrastructure/secrets/dev/` |
 | `docker-compose.prod.yml` | gateway : `nginx.prod.conf`, `80:80` et `443:443`, certificats montés depuis `${SENTINEL_TLS_CERT_DIR}`, webroot ACME depuis `${SENTINEL_ACME_WEBROOT}` ; secrets lus dans `${SENTINEL_SECRETS_DIR}` |
 
 Commandes :
@@ -253,12 +254,14 @@ L'image officielle crée `POSTGRES_USER` avec les droits superutilisateur. Ce co
 |---|---|---|---|
 | `postgres` (superutilisateur) | — | script `infrastructure/postgres/init/` uniquement | Crée les rôles, la base et le schéma |
 | `sentinel_owner` | `LOGIN NOSUPERUSER NOCREATEROLE NOCREATEDB` | conteneur `migrate` uniquement | Propriétaire de la base `sentinel` et du schéma `sentinel` |
-| `sentinel_app` | `LOGIN NOSUPERUSER NOCREATEROLE NOCREATEDB` | `core-api` uniquement | `CONNECT` sur la base, `USAGE` sur le schéma, aucun `CREATE`. Droits détaillés ci-dessous |
+| `sentinel_app` | `LOGIN NOSUPERUSER NOCREATEROLE NOCREATEDB` | `core-api` uniquement | `CONNECT` sur la base `sentinel` seulement, `USAGE` sur le schéma, aucun `CREATE` ni `TEMPORARY`. Droits détaillés ci-dessous |
 
 **Script d'initialisation** (`infrastructure/postgres/init/01-roles.sh`, exécuté par l'image postgres uniquement sur un volume vide) :
 
 - crée les deux rôles avec les mots de passe `SENTINEL_DB_OWNER_PASSWORD` et `SENTINEL_DB_APP_PASSWORD` ;
 - crée la base `sentinel` (propriétaire `sentinel_owner`) et le schéma `sentinel` ;
+- retire `CONNECT` et `TEMPORARY` à `PUBLIC` sur la base `sentinel`, puis accorde `CONNECT` à `sentinel_app` ;
+- retire `CONNECT` et `TEMPORARY` à `PUBLIC` sur les bases `postgres` et `template1` : les rôles applicatifs n'atteignent que la base `sentinel` ;
 - `REVOKE ALL ON SCHEMA public FROM PUBLIC` ;
 - `ALTER ROLE … SET search_path = sentinel` pour les deux rôles.
 
@@ -1145,7 +1148,8 @@ frontend/src/
 - échec de `UPDATE`, `DELETE` et `TRUNCATE` sur `audit_logs` ;
 - échec de `INSERT`, `UPDATE` et `DELETE` sur `roles`, `permissions` et `role_permissions` ;
 - échec de `UPDATE` sur `flyway_schema_history` ;
-- échec de `CREATE TABLE`, `ALTER TABLE` et `DROP TABLE`.
+- échec de `CREATE TABLE`, `ALTER TABLE` et `DROP TABLE` ;
+- échec de `CREATE TEMP TABLE` et de la connexion aux bases `postgres` et `template1`.
 
 **Triggers :** rejet de `UPDATE`, `DELETE` et `TRUNCATE`, y compris avec le rôle propriétaire.
 

@@ -16,6 +16,8 @@ CREATE ROLE sentinel_app   LOGIN NOSUPERUSER NOCREATEROLE NOCREATEDB PASSWORD :'
 CREATE DATABASE sentinel OWNER sentinel_owner;
 REVOKE CONNECT, TEMPORARY ON DATABASE sentinel FROM PUBLIC;
 GRANT CONNECT ON DATABASE sentinel TO sentinel_app;
+-- Les rôles applicatifs n'atteignent que la base sentinel : les bases créées par initdb sont fermées à PUBLIC.
+REVOKE CONNECT, TEMPORARY ON DATABASE postgres, template1 FROM PUBLIC;
 
 \connect sentinel
 REVOKE ALL ON SCHEMA public FROM PUBLIC;
