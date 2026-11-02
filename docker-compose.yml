@@ -24,8 +24,58 @@ services:
     networks:
       - data
 
+  # Ponctuel : applique les migrations avec le rôle propriétaire, puis s'arrête (spec §6.5).
+  migrate:
+    build:
+      context: ./services/core-api
+      dockerfile: Dockerfile.migrate
+    environment:
+      FLYWAY_URL: jdbc:postgresql://postgres:5432/sentinel
+      FLYWAY_USER: sentinel_owner
+      FLYWAY_PASSWORD: ${SENTINEL_DB_OWNER_PASSWORD:?SENTINEL_DB_OWNER_PASSWORD manquant dans .env}
+      FLYWAY_SCHEMAS: sentinel
+      FLYWAY_CONNECT_RETRIES: "10"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - data
+
+  # Ne démarre que si migrate s'est terminé avec succès ; valide les migrations au démarrage sans jamais migrer.
+  core-api:
+    build:
+      context: ./services/core-api
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      SENTINEL_DB_APP_PASSWORD: ${SENTINEL_DB_APP_PASSWORD:?SENTINEL_DB_APP_PASSWORD manquant dans .env}
+      SENTINEL_ALLOWED_ORIGINS: ${SENTINEL_ALLOWED_ORIGINS:-}
+      SENTINEL_REFRESH_COOKIE_SECURE: ${SENTINEL_REFRESH_COOKIE_SECURE:-true}
+      SENTINEL_BOOTSTRAP_ADMIN_EMAIL: ${SENTINEL_BOOTSTRAP_ADMIN_EMAIL:-}
+      SENTINEL_BOOTSTRAP_ADMIN_PASSWORD: ${SENTINEL_BOOTSTRAP_ADMIN_PASSWORD:-}
+      SENTINEL_BOOTSTRAP_ADMIN_NAME: ${SENTINEL_BOOTSTRAP_ADMIN_NAME:-}
+    secrets:
+      - source: jwt_private
+        target: jwt-private.pem
+      - source: jwt_public
+        target: jwt-public.pem
+      - source: hmac_key
+        target: hmac.key
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    networks:
+      - app
+      - data
+
 networks:
+  app:
   data:
 
 volumes:
   pgdata:
+
+# Montés dans /run/secrets/. Chaque surcharge (dev, prod) indique les fichiers sources.
+secrets:
+  jwt_private: {}
+  jwt_public: {}
+  hmac_key: {}

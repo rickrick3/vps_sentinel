@@ -34,19 +34,31 @@ Le wrapper Maven (`./mvnw`, ou `.\mvnw.cmd` sous PowerShell) utilise `JAVA_HOME`
 
 ## Environnement de développement
 
-État actuel : PostgreSQL seul (rôles séparés, base et schéma `sentinel`). Les autres services arrivent avec la phase 1.
+État actuel : PostgreSQL, conteneur de migration et Core API. Le gateway et le frontend arrivent avec la suite de la phase 1.
 
 ```bash
 cp .env.example .env                 # une fois ; valeurs factices de développement
 bash scripts/gen-dev-secrets.sh      # une fois ; clés dans infrastructure/secrets/dev/ (ignoré par git)
 
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --wait postgres   # démarrage
-docker compose -f docker-compose.yml -f docker-compose.dev.yml ps                      # état
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build --wait    # pile complète
+docker compose -f docker-compose.yml -f docker-compose.dev.yml ps -a                   # état (migrate : Exited (0))
 docker compose -f docker-compose.yml -f docker-compose.dev.yml down                    # arrêt, données conservées
 docker compose -f docker-compose.yml -f docker-compose.dev.yml down -v                 # remise à zéro (base vierge)
 ```
 
-- PostgreSQL est publié sur `127.0.0.1:5432` uniquement, jamais sur le réseau local.
+API lancée depuis le poste, sur `localhost:8080`, avec la base de la pile Compose :
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --wait postgres
+docker compose -f docker-compose.yml -f docker-compose.dev.yml run --rm migrate       # attend la fin des migrations
+set -a; . ./.env; set +a             # SENTINEL_DB_APP_PASSWORD
+cd services/core-api && ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
+```
+
+Tests du backend (Docker requis : Testcontainers démarre un PostgreSQL 18 réel) : `cd services/core-api && ./mvnw verify`.
+
+- `migrate` applique les migrations avec `sentinel_owner`, puis s'arrête. `core-api` ne démarre que si `migrate` a réussi, et refuse de démarrer si une migration manque ou a été modifiée : l'API valide les migrations sans jamais les exécuter.
+- PostgreSQL est publié sur `127.0.0.1:5432` uniquement, jamais sur le réseau local. `core-api` n'est pas publié : il sera exposé par le gateway.
 - `infrastructure/postgres/init/01-roles.sh` ne s'exécute que sur un volume vide. Après une modification de ce script ou des mots de passe de `.env`, repartir d'une base vierge avec `down -v`.
 - Rôles PostgreSQL : `postgres` (initialisation uniquement), `sentinel_owner` (migrations), `sentinel_app` (API, sans aucun droit de création).
 
