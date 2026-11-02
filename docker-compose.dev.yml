@@ -1,0 +1,5 @@
+# Surcharge dev (spec §6.3). Ports publiés sur la boucle locale uniquement, jamais sur le réseau local.
+services:
+  postgres:
+    ports:
+      - "127.0.0.1:5432:5432"
