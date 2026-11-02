@@ -58,10 +58,12 @@
 - Toute commande git s'exécute depuis la racine du dépôt VPS Sentinel. Jamais `git add .` ni `git add -A` depuis `expertiz`.
 - Fins de ligne LF (§5.3 de la spec).
 - Commits au format Conventional Commits.
+- **Un commit par jalon** (voir « Jalons ») : les étapes « commit » des tâches deviennent « indexer ». En fin de jalon, tout est indexé avec les bons modes (`git update-index --chmod=+x` sur chaque nouveau script : sous Windows, `git add` enregistre `100644`), `bash scripts/check-repo.sh` passe, puis le commit attend la revue et l'autorisation de l'utilisateur.
 
-**Commandes de référence** (les variables pointent vers le JDK 25 installé à la tâche 0) :
+**Commandes de référence.** Le JDK 25 est sélectionné à chaque commande, sans toucher à la configuration globale du poste (`JAVA_HOME` global : JDK 27). Sur la CI, `setup-java` fournit `JAVA_HOME`.
 
-- backend : `cd services/core-api && ./mvnw -q test -Dtest=<Classe>` ; tout : `./mvnw verify` ;
+- JDK : `J25="$(ls -d "/c/Program Files/Eclipse Adoptium/jdk-25"* | head -1)"` (Git Bash) ;
+- backend : `cd services/core-api && JAVA_HOME="$J25" ./mvnw -q test -Dtest=<Classe>` ; tout : `JAVA_HOME="$J25" ./mvnw verify` ;
 - frontend : `cd frontend && npx vitest run <fichier>` ; tout : `npm run lint && npm run typecheck && npm test && npm run build`.
 
 ## Review Focus
@@ -74,6 +76,24 @@ Cas d'usage réels qu'aucun test ne couvrait au départ. Chacun a reçu son test
 4. **Client en IPv6** (`2001:db8::1` via `X-Forwarded-For`) : l'adresse est stockée telle quelle dans l'audit et la limitation fonctionne (tâche 10).
 5. **Email de bootstrap avec majuscules et espaces** («  Admin@Sentinel.LOCAL ») : il est normalisé, et la connexion en minuscules fonctionne (tâche 12).
 
+## Jalons
+
+Approuvés le 2026-11-02. La phase 0 (dépôt, poste, PostgreSQL de dev) est terminée : commits `0ecae28`, `38d3252` et `e1b6d65`. Chaque jalon se termine par un rapport avec les sorties réelles, des fichiers indexés et un commit proposé, puis attend l'autorisation de l'utilisateur.
+
+| Jalon | Tâches | Contenu |
+|---|---|---|
+| — | 0, 1 | Faites en phase 0 |
+| M1 | 2, 3, 4 | Squelette core-api, harnais Testcontainers, conteneurs `migrate` et `core-api` |
+| M2 | 5, 6, 7 | Noyau partagé, secrets et empreintes, audit |
+| M3 | 8, 9 | Identité : schéma, matrice, mots de passe, jetons, Spring Security |
+| M4 | 10, 11, 12 | Login et limitation, refresh et logout, changement de mot de passe, premier administrateur |
+| M5 | 13 | Administration des utilisateurs |
+| M6 | 14, 15, 16 | VPS, projets, environnements, domaines, déploiements |
+| M7 | 17 | Lecture de l'audit, matrice d'autorisation, contrat OpenAPI |
+| M8 | 18, 19 | Squelette frontend et authentification côté client |
+| M9 | 20, 21, 22 | Écrans VPS, projets, utilisateurs, audit, tableau de bord |
+| M10 | 23, 24, 25 | Gateway, Compose prod, E2E, CI, vérification finale |
+
 ---
 
 ## Structure des fichiers
@@ -83,7 +103,7 @@ Cas d'usage réels qu'aucun test ne couvrait au départ. Chacun a reçu son test
 ├── .gitattributes .gitignore .editorconfig .env.example README.md
 ├── docker-compose.yml docker-compose.dev.yml docker-compose.prod.yml
 ├── scripts/
-│   ├── check-repo.sh                       fins de ligne, bit exécutable, fichiers d'hygiène (§13.9)
+│   ├── check-repo.sh                       fins de ligne, bit exécutable, fichiers d'hygiène, fichiers sensibles (§13.9)
 │   ├── gen-dev-secrets.sh                  clés JWT RSA 3072, clé HMAC (base64) dans infrastructure/secrets/dev/
 │   ├── check-compose-ports.sh              ports publiés dev et prod (§6.3)
 │   ├── export-openapi.sh                   régénère contracts/openapi/core-api.yaml
@@ -147,16 +167,18 @@ Cas d'usage réels qu'aucun test ne couvrait au départ. Chacun a reçu son test
 
 ## Tâche 0 — Prérequis du poste, versionnement des docs, renommage (opérateur, avec accord explicite)
 
+> **Faite en phase 0.** Le JDK 25 a été installé sans modifier `PATH`, `JAVA_HOME` ni l'association `.jar` (`winget install --id EclipseAdoptium.Temurin.25.JDK -e --source winget --custom "ADDLOCAL=FeatureMain"`). Il n'y a pas d'export dans `~/.bashrc` : le JDK est sélectionné à chaque commande (Global Constraints).
+
 Aucun code. Ces étapes modifient le poste et le dépôt parent : les exécuter seulement après l'accord explicite de l'utilisateur. Le renommage exige de fermer VS Code, donc cette session.
 
-- [ ] **Étape 1 : versionner la spec v2 et ce plan**, depuis la racine actuelle `vps monitoring/` :
+- [x] **Étape 1 : versionner la spec v2 et ce plan**, depuis la racine actuelle `vps monitoring/` :
 
 ```bash
 git add docs/superpowers/specs/2026-11-02-phase1-foundation-design.md docs/superpowers/plans/2026-11-02-phase1-foundation.md
 git commit -m "docs: phase 1 spec v2 and implementation plan"
 ```
 
-- [ ] **Étape 2 : installer le JDK 25.** `winget install --id EclipseAdoptium.Temurin.25.JDK -e`
+- [x] **Étape 2 : installer le JDK 25.** `winget install --id EclipseAdoptium.Temurin.25.JDK -e`
 
   Vérifier :
 
@@ -165,17 +187,23 @@ git commit -m "docs: phase 1 spec v2 and implementation plan"
   "$JAVA_HOME/bin/java" -version
   ```
 
-  Attendu : `openjdk version "25`. Ajouter l'`export` à `~/.bashrc`, avec l'accord de l'utilisateur.
+  Attendu : `openjdk version "25`. Pas d'`export` dans `~/.bashrc` (décision D2 : aucune modification globale).
 
-- [ ] **Étape 3 : renommer.** Fermer VS Code et les terminaux, puis dans PowerShell : `Rename-Item "C:\Users\exp\Desktop\expertiz\vps monitoring" vps-sentinel`. Rouvrir VS Code sur `C:\Users\exp\Desktop\expertiz\vps-sentinel`.
-- [ ] **Étape 4 : exclure le dossier du dépôt parent.** `printf '\nvps-sentinel/\n' >> /c/Users/exp/Desktop/expertiz/.git/info/exclude`
-- [ ] **Étape 5 : vérifier.**
+- [x] **Étape 3 : renommer.** Fermer VS Code et les terminaux, puis dans PowerShell : `Rename-Item "C:\Users\exp\Desktop\expertiz\vps monitoring" vps-sentinel`. Rouvrir VS Code sur `C:\Users\exp\Desktop\expertiz\vps-sentinel`.
+- [x] **Étape 4 : exclure le dossier du dépôt parent.** `printf '\nvps-sentinel/\n' >> /c/Users/exp/Desktop/expertiz/.git/info/exclude`
+- [x] **Étape 5 : vérifier.**
   - `git -C /c/Users/exp/Desktop/expertiz status --short | grep -c vps` → `0` ;
   - `git -C /c/Users/exp/Desktop/expertiz/vps-sentinel log --oneline -1` → le commit de l'étape 1 ;
   - `docker info --format '{{.ServerVersion}}'` → au moins `29` ;
   - `node -v` → `v24`.
 
 ## Tâche 1 — Hygiène du dépôt et contrôle automatique
+
+> **Faite en phase 0** (commits `0ecae28` et `38d3252`). En plus des contrôles (a) à (c), `check-repo.sh` vérifie :
+>
+> - les fins de ligne des fichiers non suivis et non ignorés ;
+> - le bit exécutable de `infrastructure/postgres/init/*.sh` ;
+> - qu'aucun fichier sensible n'est suivi (`.env`, `*.pem`, `*.key`, `infrastructure/secrets/`).
 
 **Fichiers :**
 
@@ -185,18 +213,18 @@ git commit -m "docs: phase 1 spec v2 and implementation plan"
 
 - Produit : `scripts/check-repo.sh`, qui sort avec un code non nul en cas d'écart. Il est réutilisé par la CI (tâche 25).
 
-- [ ] **Étape 1 : écrire `scripts/check-repo.sh`** (Bash, `set -euo pipefail`, chemins entre guillemets). Il échoue si l'une de ces conditions est vraie :
+- [x] **Étape 1 : écrire `scripts/check-repo.sh`** (Bash, `set -euo pipefail`, chemins entre guillemets). Il échoue si l'une de ces conditions est vraie :
   - (a) `git ls-files --eol` signale `i/crlf` ou `w/crlf` pour un fichier autre que `*.cmd` et `*.bat` ;
   - (b) `git ls-files -s` donne un mode autre que `100755` pour `services/core-api/mvnw` ou pour un fichier `scripts/*.sh` présent ;
   - (c) `.gitattributes`, `.gitignore` ou `.editorconfig` est absent.
 
   Chaque écart est affiché en clair avant la sortie en erreur.
-- [ ] **Étape 2 : lancer `bash scripts/check-repo.sh`.** Attendu : échec, « .gitattributes absent ».
-- [ ] **Étape 3 : créer les fichiers d'hygiène.**
+- [x] **Étape 2 : lancer `bash scripts/check-repo.sh`.** Attendu : échec, « .gitattributes absent ».
+- [x] **Étape 3 : créer les fichiers d'hygiène.**
   - `.gitattributes` et `.gitignore` : contenu exact de la spec §5.3.
   - `.editorconfig` : `root = true` ; `[*]` avec `end_of_line = lf`, `charset = utf-8`, `insert_final_newline = true`, `indent_style = space`, `indent_size = 2` ; `[*.java]` avec `indent_size = 4` ; `[*.{cmd,bat}]` avec `end_of_line = crlf`.
   - `README.md` : description d'une ligne, encadré « Phase 1 non autorisée en production — voir spec §15 », règle « jamais de `git add .` depuis `expertiz` ».
-- [ ] **Étape 4 : poser le bit exécutable et relancer.**
+- [x] **Étape 4 : poser le bit exécutable et relancer.**
 
   ```bash
   git add .gitattributes .gitignore .editorconfig README.md scripts/check-repo.sh
@@ -205,7 +233,7 @@ git commit -m "docs: phase 1 spec v2 and implementation plan"
   ```
 
   Attendu : `OK`.
-- [ ] **Étape 5 : commit.** `git commit -m "chore: repository hygiene files and checks"`
+- [x] **Étape 5 : commit.** `git commit -m "chore: repository hygiene files and checks"`
 
 ## Tâche 2 — Squelette de core-api et frontières de modules
 
@@ -275,37 +303,22 @@ class ModularityTest {
 
 **Fichiers :**
 
-- Créer : `infrastructure/postgres/init/01-roles.sh`, `db/migration/V1__schema_privileges.sql`, `shared/persistence/FlywayValidateOnlyConfig.java`.
-- Tests : `support/SentinelPostgres.java`, `support/IntegrationTest.java`, `support/IsolatedDatabaseIT.java`, `support/TestClock.java`, `support/TestClockConfig.java`, `persistence/DatabasePrivilegesIT.java`, `ApplicationStartupIT.java`, `shared/persistence/FlywayValidateOnlyConfigTest.java`.
+- Existe déjà : `infrastructure/postgres/init/01-roles.sh` (phase 0, `e1b6d65`). Ne pas le réécrire.
+- Créer : `db/migration/V1__schema_privileges.sql`, `shared/persistence/FlywayValidateOnlyConfig.java`.
+- Tests : `support/SentinelPostgres.java`, `support/IntegrationTest.java`, `persistence/PostgresInitScriptIT.java`, `persistence/DatabasePrivilegesIT.java`, `persistence/UnmigratedDatabaseIT.java`, `ApplicationStartupIT.java`.
+- Reportés à leur premier consommateur : `TestClock` et `TestClockConfig` (tâche 5, avec le bean `Clock`) ; `IsolatedDatabaseIT` (tâche 12).
 
 **Interfaces :**
 
 - Produit :
-  - `SentinelPostgres.shared()` → conteneur unique ; `newIsolated()` → nouveau conteneur ;
-  - pour chaque instance : `appJdbcUrl()`, `ownerDataSource()`, `migrate()` ;
-  - `TestClock extends Clock` avec `set(Instant)` et `advance(Duration)` ;
-  - `IntegrationTest` avec `http` (`RestTestClient`), `ownerJdbc()`, `appJdbc()`, `clock` ;
+  - `SentinelPostgres.shared()` → conteneur unique, migré ; `newIsolated()` → nouveau conteneur, non migré ;
+  - pour chaque instance : `appJdbcUrl()`, `ownerJdbc()`, `appJdbc()`, `migrate()`, `logs()` ;
+  - `IntegrationTest` avec `http` (`RestTestClient`), `ownerJdbc()`, `appJdbc()` ;
   - `FlywayMigrationStrategy` qui appelle `flyway.validate()`.
 
-- [ ] **Étape 1 : écrire `01-roles.sh`.**
-  - Bash, `set -euo pipefail`, `psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER"`.
-  - Les mots de passe passent en variables psql pour éviter toute injection : `-v owner_pw="$SENTINEL_DB_OWNER_PASSWORD" -v app_pw="$SENTINEL_DB_APP_PASSWORD"`.
-  - Instructions, dans cet ordre :
-
-```sql
--- base postgres
-CREATE ROLE sentinel_owner LOGIN NOSUPERUSER NOCREATEROLE NOCREATEDB PASSWORD :'owner_pw';
-CREATE ROLE sentinel_app   LOGIN NOSUPERUSER NOCREATEROLE NOCREATEDB PASSWORD :'app_pw';
-CREATE DATABASE sentinel OWNER sentinel_owner;
-REVOKE CONNECT ON DATABASE sentinel FROM PUBLIC;
-GRANT CONNECT ON DATABASE sentinel TO sentinel_app;
--- \connect sentinel
-REVOKE ALL ON SCHEMA public FROM PUBLIC;
-CREATE SCHEMA sentinel AUTHORIZATION sentinel_owner;
-GRANT USAGE ON SCHEMA sentinel TO sentinel_app;
-ALTER ROLE sentinel_owner SET search_path = sentinel;
-ALTER ROLE sentinel_app   SET search_path = sentinel;
-```
+- [x] **Étape 1 : `01-roles.sh`.** Fait en phase 0, et durci par rapport au SQL d'origine (spec v2.1 §6.5) :
+  - `CONNECT` et `TEMPORARY` retirés à `PUBLIC` sur `sentinel` ;
+  - bases `postgres` et `template1` fermées à `PUBLIC`.
 
 - [ ] **Étape 2 : écrire `V1__schema_privileges.sql`.**
 
@@ -317,23 +330,37 @@ GRANT SELECT ON flyway_schema_history TO sentinel_app;
 
 - [ ] **Étape 3 : écrire le harnais.**
   - `SentinelPostgres` utilise `org.testcontainers.postgresql.PostgreSQLContainer` sur `postgres:18`.
-  - Il passe `POSTGRES_PASSWORD`, `SENTINEL_DB_OWNER_PASSWORD=owner-test` et `SENTINEL_DB_APP_PASSWORD=app-test`, et copie `../../infrastructure/postgres/init/01-roles.sh` dans `/docker-entrypoint-initdb.d/`.
+  - Il passe `SENTINEL_DB_OWNER_PASSWORD=owner-test` et `SENTINEL_DB_APP_PASSWORD=app-test`, et copie `../../infrastructure/postgres/init/01-roles.sh` dans `/docker-entrypoint-initdb.d/` **avec le mode `0755` explicite** : `MountableFile.forHostPath(script, 0755)`. Sous Windows, le mode du fichier hôte n'est pas fiable ; or un script non exécutable serait *sourcé* par l'entrypoint au lieu d'être exécuté.
   - `migrate()` lance Flyway en Java avec `sentinel_owner`, `schemas("sentinel")`, `createSchemas(false)`, `locations("classpath:db/migration")`.
-  - `IntegrationTest` déclare un `@DynamicPropertySource` qui fournit l'URL, `sentinel_app` et `app-test` à `spring.datasource.*` et à `spring.flyway.*`.
+  - `IntegrationTest` déclare un `@DynamicPropertySource` qui fournit l'URL, `sentinel_app` et `app-test` à `spring.datasource.*`. Flyway (validation seule) utilise la même source de données.
 - [ ] **Étape 4 : écrire les tests.**
 
 ```java
+class PostgresInitScriptIT {
+  @Test void initScriptIsExecutedNotSourced() { /* logs du conteneur : "running /docker-entrypoint-initdb.d/01-roles.sh", jamais "sourcing" */ }
+}
 class DatabasePrivilegesIT extends IntegrationTest {
-  @Test void appRoleCannotCreateTables() {
-    assertThatThrownBy(() -> appJdbc().sql("CREATE TABLE x(id int)").update()).hasMessageContaining("permission denied");
-  }
-  @Test void appRoleCannotUsePublicSchema() {
-    assertThatThrownBy(() -> appJdbc().sql("CREATE TABLE public.x(id int)").update()).hasMessageContaining("permission denied");
-  }
-  @Test void appRoleReadsButCannotWriteFlywayHistory() {
-    assertThat(appJdbc().sql("SELECT count(*) FROM flyway_schema_history").query(Long.class).single()).isPositive();
-    assertThatThrownBy(() -> appJdbc().sql("UPDATE flyway_schema_history SET success = true").update()).hasMessageContaining("permission denied");
-  }
+  @Test void appRoleCannotCreateTables()             { /* CREATE TABLE x(id int) → "permission denied" */ }
+  @Test void appRoleCannotUsePublicSchema()          { /* CREATE TABLE public.x(id int) → "permission denied" */ }
+  @Test void appRoleCannotCreateTemporaryTables()    { /* CREATE TEMP TABLE x(id int) → "permission denied to create temporary tables" */ }
+  @ParameterizedTest @ValueSource(strings = {"postgres", "template1"})
+  void appRoleCannotConnectToOtherDatabases(String db) { /* connexion sentinel_app → "permission denied for database" */ }
+  @Test void appRoleReadsFlywayHistory()             { /* SELECT count(*) FROM flyway_schema_history → > 0 */ }
+  @ParameterizedTest @ValueSource(strings = {
+      "INSERT INTO flyway_schema_history (installed_rank, description, type, script, installed_by, execution_time, success) VALUES (99, 'x', 'SQL', 'x', 'x', 0, true)",
+      "UPDATE flyway_schema_history SET success = true",
+      "DELETE FROM flyway_schema_history"})
+  void appRoleCannotWriteFlywayHistory(String sql)   { /* → "permission denied" */ }
+  @ParameterizedTest @ValueSource(strings = {"ALTER TABLE flyway_schema_history ADD COLUMN x int", "DROP TABLE flyway_schema_history"})
+  void appRoleCannotAlterOrDropTables(String sql)    { /* → "must be owner" */ }
+}
+class UnmigratedDatabaseIT {   // base isolée par test (SentinelPostgres.newIsolated())
+  @Test void refusesToStartWhenMigrationsAreMissing() {
+    /* base non migrée → démarrage de l'application en échec, cause racine FlywayValidateException
+       ("Detected resolved migration not applied to database") ; ensuite, sentinel.flyway_schema_history n'existe toujours pas :
+       l'API n'a rien migré */ }
+  @Test void refusesToStartWhenAppliedMigrationWasAltered() {
+    /* base migrée, puis checksum de V1 modifié par sentinel_owner → FlywayValidateException ("checksum mismatch") */ }
 }
 class ApplicationStartupIT extends IntegrationTest {
   @Test void healthIsUpWithoutDetails() {
@@ -341,30 +368,20 @@ class ApplicationStartupIT extends IntegrationTest {
         .expectBody().jsonPath("$.status").isEqualTo("UP").jsonPath("$.components").doesNotExist();
   }
 }
-class FlywayValidateOnlyConfigTest {
-  @Test void strategyValidatesAndNeverMigrates() {
-    Flyway flyway = mock(Flyway.class);
-    new FlywayValidateOnlyConfig().validateOnly().migrate(flyway);
-    verify(flyway).validate(); verify(flyway, never()).migrate();
-  }
-}
 ```
 
-- [ ] **Étape 5 : lancer `./mvnw -q test -Dtest='DatabasePrivilegesIT,ApplicationStartupIT,FlywayValidateOnlyConfigTest'`.** Attendu : échec (harnais ou configuration absents).
+- [ ] **Étape 5 : lancer `./mvnw -q test -Dtest='PostgresInitScriptIT,DatabasePrivilegesIT,UnmigratedDatabaseIT,ApplicationStartupIT'`.** Attendu : échec (harnais, migration ou configuration absents).
 - [ ] **Étape 6 : implémenter `FlywayValidateOnlyConfig#validateOnly()`.** Un `@Bean FlywayMigrationStrategy` égal à `Flyway::validate`.
 - [ ] **Étape 7 : relancer.** Attendu : PASS.
-- [ ] **Étape 8 : commit.**
-
-  ```bash
-  git update-index --chmod=+x infrastructure/postgres/init/01-roles.sh
-  git commit -m "feat(db): separated postgres roles, first migration, test harness"
-  ```
+- [ ] **Étape 8 : indexer** la migration, la configuration et les tests (commit au niveau du jalon M1).
 
 ## Tâche 4 — Compose : postgres, migrate, core-api ; secrets de dev
 
 **Fichiers :**
 
-- Créer : `services/core-api/Dockerfile`, `services/core-api/Dockerfile.migrate`, `docker-compose.yml`, `docker-compose.dev.yml`, `.env.example`, `scripts/gen-dev-secrets.sh`.
+- Existent déjà (phase 0) : `.env.example`, `scripts/gen-dev-secrets.sh`, et le service `postgres` dans `docker-compose.yml` et `docker-compose.dev.yml`.
+- Créer : `services/core-api/Dockerfile`, `services/core-api/Dockerfile.migrate`.
+- Modifier : `docker-compose.yml`, `docker-compose.dev.yml`, `README.md` (section « Environnement de développement »).
 
 **Interfaces :**
 
@@ -373,7 +390,7 @@ class FlywayValidateOnlyConfigTest {
   - réseaux `public`, `app`, `data` ; volume `pgdata` ;
   - secrets Compose `jwt_private`, `jwt_public`, `hmac_key`, montés dans `/run/secrets/jwt-private.pem`, `jwt-public.pem` et `hmac.key`.
 
-- [ ] **Étape 1 : `scripts/gen-dev-secrets.sh`.**
+- [x] **Étape 1 : `scripts/gen-dev-secrets.sh`** (phase 0 ; la sortie d'openssl est normalisée en LF).
   - Il crée `infrastructure/secrets/dev/`.
   - Commandes : `openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out jwt-private.pem`, puis `openssl pkey -in jwt-private.pem -pubout -out jwt-public.pem`, puis `openssl rand -base64 32 > hmac.key`.
   - Il n'écrase rien sans l'option `--force`.
@@ -383,12 +400,12 @@ class FlywayValidateOnlyConfigTest {
   - `HEALTHCHECK` : `curl -fsS http://localhost:8080/actuator/health`.
 - [ ] **Étape 3 : `Dockerfile.migrate`.** `FROM flyway/flyway:12.4.0-alpine`, puis `COPY src/main/resources/db/migration /flyway/sql`, puis `CMD ["migrate"]`.
 - [ ] **Étape 4 : `docker-compose.yml` (`name: vps-sentinel`).**
-  - **postgres :** reçoit `POSTGRES_PASSWORD`, `SENTINEL_DB_OWNER_PASSWORD` et `SENTINEL_DB_APP_PASSWORD`. Il monte `./infrastructure/postgres/init` en lecture seule. Healthcheck `pg_isready -U postgres`. Réseau `data`.
+  - **postgres :** fait en phase 0, à conserver tel quel : volume monté sur `/var/lib/postgresql`, healthcheck `pg_isready` en TCP, script d'initialisation en lecture seule, réseau `data`.
   - **migrate :** `FLYWAY_URL=jdbc:postgresql://postgres:5432/sentinel`, `FLYWAY_USER=sentinel_owner`, `FLYWAY_PASSWORD=${SENTINEL_DB_OWNER_PASSWORD}`, `FLYWAY_SCHEMAS=sentinel`, `FLYWAY_CONNECT_RETRIES=10`. Dépend de `postgres` (`service_healthy`). Réseau `data`.
   - **core-api :** `SPRING_PROFILES_ACTIVE=prod`, `SENTINEL_DB_APP_PASSWORD`, origines, cookie, variables de bootstrap. Les trois secrets. Dépend de `migrate` (`service_completed_successfully`). Réseaux `app` et `data`.
   - **Aucun port publié.**
-- [ ] **Étape 5 : `docker-compose.dev.yml`.** `postgres` publie `5432:5432`. Les secrets ont pour `file: ./infrastructure/secrets/dev/...`.
-- [ ] **Étape 6 : `.env.example`.**
+- [ ] **Étape 5 : `docker-compose.dev.yml`.** `postgres` publie déjà `127.0.0.1:5432:5432` (phase 0). Ajouter les secrets, avec `file: ./infrastructure/secrets/dev/...`.
+- [x] **Étape 6 : `.env.example`** (phase 0).
 
 ```dotenv
 POSTGRES_PASSWORD=change-me-superuser
@@ -414,10 +431,13 @@ SENTINEL_ACME_WEBROOT=
 
   Attendu, une fois les conteneurs stabilisés :
   - `docker compose -f docker-compose.yml -f docker-compose.dev.yml ps -a` : `migrate` en `Exited (0)` ;
-  - `docker inspect --format '{{.State.Health.Status}}' vps-sentinel-core-api-1` : `healthy`.
+  - `docker inspect --format '{{.State.Health.Status}}' vps-sentinel-core-api-1` : `healthy` ;
+  - horodatages `docker inspect` : `migrate` terminé avant le démarrage de `core-api` ;
+  - un `migrate` en échec (mot de passe faux, via un fichier de surcharge temporaire hors du dépôt) : `core-api` ne démarre pas ;
+  - `core-api` seul contre une base non migrée (`docker compose … run --rm --no-deps core-api`) : arrêt avec `FlywayValidateException`, code de sortie non nul.
 
   Puis `docker compose … down -v`.
-- [ ] **Étape 8 : commit.** `git update-index --chmod=+x scripts/gen-dev-secrets.sh`, puis `git commit -m "feat(infra): compose data plane, migration container, dev secrets"`.
+- [ ] **Étape 8 : indexer** les Dockerfiles, les fichiers Compose et le README (commit au niveau du jalon M1).
 
 ## Tâche 5 — Noyau partagé : erreurs, pagination, corrélation, horloge
 
@@ -1364,9 +1384,9 @@ test('dashboard never calls audit-logs without audit:read', async () => { /* nom
 - [ ] **Étape 1 : écrire `scripts/check-compose-ports.sh`.**
   - Il produit la configuration dev et la configuration prod avec `docker compose -f docker-compose.yml -f docker-compose.<env>.yml config --format json`. Pour la prod, il fournit des valeurs factices à `SENTINEL_TLS_CERT_DIR`, `SENTINEL_ACME_WEBROOT` et `SENTINEL_SECRETS_DIR`.
   - Il extrait les ports publiés avec `node -e`.
-  - Attendus :
-    - dev : `{gateway: [8088], postgres: [5432]}` ;
-    - prod : `{gateway: [80, 443]}` ;
+  - Attendus, adresse d'écoute comprise :
+    - dev : `{gateway: ["127.0.0.1:8088"], postgres: ["127.0.0.1:5432"]}` (spec v2.1 §6.3) ;
+    - prod : `{gateway: [80, 443]}`, sur toutes les interfaces ;
     - aucun autre service ne publie de port.
 - [ ] **Étape 2 : lancer `bash scripts/check-compose-ports.sh`.** Attendu : échec, ni gateway ni configuration prod.
 - [ ] **Étape 3 : `frontend/Dockerfile` et `spa.conf`.**
@@ -1407,7 +1427,7 @@ test('dashboard never calls audit-logs without audit:read', async () => { /* nom
     - serveur 443 `ssl` : `/etc/nginx/certs/fullchain.pem`, `privkey.pem`, `ssl_protocols TLSv1.2 TLSv1.3;`, en-tête HSTS.
 - [ ] **Étape 5 : Compose.**
   - Base : `frontend` et `gateway`, ce dernier dépendant de `core-api` (`service_healthy`) et de `frontend`.
-  - Dev : gateway sur `8088:80` avec `nginx.dev.conf`.
+  - Dev : gateway sur `127.0.0.1:8088:80` avec `nginx.dev.conf`.
   - Prod : gateway sur `80:80` et `443:443`, `nginx.prod.conf`, certificats et webroot ACME, secrets lus dans `${SENTINEL_SECRETS_DIR}`.
 - [ ] **Étape 6 : vérifier.**
   - `bash scripts/check-compose-ports.sh` → `OK` ;
@@ -1429,7 +1449,7 @@ test('dashboard never calls audit-logs without audit:read', async () => { /* nom
 
 - Produit :
   - **`helpers/api.ts`** : `apiLogin(request, email, password): Promise<string>` (envoie `Origin: http://localhost:8088`) ; `ADMIN_EMAIL` et `ADMIN_BOOTSTRAP_PASSWORD`, lus dans l'environnement avec pour défauts les valeurs de `.env.example` ; `ADMIN_NEW_PASSWORD = 'Admin-E2E-Password-1!'`.
-  - **`scripts/e2e.sh`** : `down -v` ; génération des secrets s'ils manquent ; `up -d --build` ; attente de l'état `healthy` du gateway ; `npx playwright test` ; `down -v` en sortie (`trap`).
+  - **`scripts/e2e.sh`** : `down -v` ; génération des secrets s'ils manquent ; `up -d --build` ; attente de l'état `healthy` du gateway ; `npx playwright test` ; `down -v` en sortie (`trap`). Toute commande Docker qui passe un chemin de conteneur s'exécute avec `MSYS_NO_PATHCONV=1` : sinon, Git Bash le convertit en chemin Windows.
 
 - [ ] **Étape 1 : écrire `playwright.config.ts`.** `baseURL: 'http://localhost:8088'`, Chromium seul, `workers: 1`, projets `journeys` puis `gateway`, avec `dependencies: ['journeys']`.
 - [ ] **Étape 2 : écrire les scénarios.**

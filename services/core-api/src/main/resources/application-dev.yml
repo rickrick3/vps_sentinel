@@ -1,0 +1,8 @@
+# API lancée depuis le poste (./mvnw spring-boot:run), PostgreSQL de dev publié sur 127.0.0.1:5432.
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/sentinel?currentSchema=sentinel
+
+sentinel:
+  security:
+    allowed-origins: ${SENTINEL_ALLOWED_ORIGINS:http://localhost:5173}

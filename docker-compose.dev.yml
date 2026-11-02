@@ -3,3 +3,12 @@ services:
   postgres:
     ports:
       - "127.0.0.1:5432:5432"
+
+# Générés par scripts/gen-dev-secrets.sh ; dossier ignoré par git.
+secrets:
+  jwt_private:
+    file: ./infrastructure/secrets/dev/jwt-private.pem
+  jwt_public:
+    file: ./infrastructure/secrets/dev/jwt-public.pem
+  hmac_key:
+    file: ./infrastructure/secrets/dev/hmac.key

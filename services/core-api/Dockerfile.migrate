@@ -1,0 +1,7 @@
+# Conteneur ponctuel de migration (spec §6.5) : Flyway applique db/migration avec sentinel_owner, puis s'arrête.
+# Source unique des migrations : src/main/resources/db/migration, aussi utilisée par les tests.
+FROM flyway/flyway:12.4.0-alpine
+COPY src/main/resources/db/migration /flyway/migrations
+ENV FLYWAY_LOCATIONS=filesystem:/flyway/migrations
+USER 10001:10001
+CMD ["migrate"]

@@ -1,0 +1,51 @@
+# Configuration commune. L'URL de la base est définie par profil (dev, prod) ; les tests la fournissent eux-mêmes.
+spring:
+  application:
+    name: core-api
+  datasource:
+    # Rôle applicatif : aucun droit sur le schéma (spec §6.5).
+    username: sentinel_app
+    password: ${SENTINEL_DB_APP_PASSWORD}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      "[hibernate.jdbc.time_zone]": UTC
+  flyway:
+    # Validation seule au démarrage (FlywayValidateOnlyConfig) : les migrations sont exécutées par le conteneur migrate.
+    schemas: sentinel
+    create-schemas: false
+
+server:
+  forward-headers-strategy: native
+
+springdoc:
+  api-docs:
+    # Actif en dev et en test pour le contrat OpenAPI, désactivé en prod (spec §8.11).
+    enabled: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+
+sentinel:
+  security:
+    allowed-origins: ${SENTINEL_ALLOWED_ORIGINS:}
+    refresh-cookie-secure: ${SENTINEL_REFRESH_COOKIE_SECURE:true}
+    access-token-ttl: PT15M
+    refresh-idle-ttl: PT24H
+    session-max-age: P7D
+    temporary-password-ttl: PT72H
+  secrets:
+    dir: /run/secrets
+  bootstrap:
+    admin:
+      email: ${SENTINEL_BOOTSTRAP_ADMIN_EMAIL:}
+      password: ${SENTINEL_BOOTSTRAP_ADMIN_PASSWORD:}
+      name: ${SENTINEL_BOOTSTRAP_ADMIN_NAME:}

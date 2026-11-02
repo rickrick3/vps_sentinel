@@ -1,0 +1,13 @@
+# API en conteneur, sur les réseaux app et data de Compose.
+spring:
+  datasource:
+    url: jdbc:postgresql://postgres:5432/sentinel?currentSchema=sentinel
+
+springdoc:
+  api-docs:
+    enabled: false
+
+logging:
+  structured:
+    format:
+      console: ecs
