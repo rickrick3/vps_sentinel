@@ -89,16 +89,12 @@ public class ProblemDetailsAdvice extends ResponseEntityExceptionHandler {
     }
 
     private static String frameworkDetail(ProblemType type, Exception ex) {
-        return switch (type) {
-            case VALIDATION_ERROR -> ex instanceof HttpMessageNotReadableException
-                    ? "Corps de requête invalide."
-                    : "Un ou plusieurs champs sont invalides.";
-            case NOT_FOUND -> "Ressource introuvable.";
-            case METHOD_NOT_ALLOWED -> "Méthode non autorisée pour cette ressource.";
-            case NOT_ACCEPTABLE -> "Seul le format JSON est disponible.";
-            case UNSUPPORTED_MEDIA_TYPE -> "Le contenu doit être au format JSON.";
-            default -> "Une erreur interne est survenue.";
-        };
+        if (type != ProblemType.VALIDATION_ERROR) {
+            return Problems.genericDetail(type);
+        }
+        return ex instanceof HttpMessageNotReadableException
+                ? "Corps de requête invalide."
+                : "Un ou plusieurs champs sont invalides.";
     }
 
     private static List<FieldViolation> fieldErrors(MethodArgumentNotValidException ex) {

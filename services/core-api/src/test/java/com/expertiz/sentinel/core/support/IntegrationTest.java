@@ -17,10 +17,13 @@ import org.springframework.test.web.servlet.client.RestTestClient;
  * requêtes traversent Tomcat.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-@Import(TestClockConfig.class)
+@Import({TestClockConfig.class, Fixtures.class, TestEndpoints.class})
 public abstract class IntegrationTest {
 
     protected static final SentinelPostgres DATABASE = SentinelPostgres.shared();
+
+    /** Seule origine autorisée pendant les tests (celle du frontend de dev). */
+    public static final String ALLOWED_ORIGIN = "http://localhost:5173";
 
     @DynamicPropertySource
     static void database(DynamicPropertyRegistry registry) {
@@ -29,6 +32,7 @@ public abstract class IntegrationTest {
         registry.add("spring.datasource.password", () -> SentinelPostgres.APP_PASSWORD);
         // Vrai chemin de lecture des secrets, avec des clés générées une fois par JVM.
         registry.add("sentinel.secrets.dir", () -> TestSecrets.directory().toString());
+        registry.add("sentinel.security.allowed-origins", () -> ALLOWED_ORIGIN);
     }
 
     @LocalServerPort
@@ -40,10 +44,17 @@ public abstract class IntegrationTest {
     @Autowired
     protected TestClock clock;
 
+    @Autowired
+    protected Fixtures fixtures;
+
     @BeforeEach
     void bindHttpClient() {
         http = RestTestClient.bindToServer().baseUrl("http://localhost:" + port).build();
         clock.set(Instant.now().truncatedTo(ChronoUnit.MICROS));
+    }
+
+    protected static String bearer(String token) {
+        return "Bearer " + token;
     }
 
     protected JdbcClient ownerJdbc() {

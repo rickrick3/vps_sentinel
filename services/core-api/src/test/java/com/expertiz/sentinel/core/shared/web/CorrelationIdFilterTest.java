@@ -2,6 +2,7 @@ package com.expertiz.sentinel.core.shared.web;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import jakarta.servlet.RequestDispatcher;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -53,6 +54,17 @@ class CorrelationIdFilterTest {
         String id = run(request);
 
         assertThat(id).matches("[0-9a-f]{32}").isNotEqualTo(incoming);
+        assertThat(response.getHeader("X-Request-Id")).isEqualTo(id);
+    }
+
+    @Test
+    void errorDispatchKeepsTheRequestId() throws Exception {
+        var request = new MockHttpServletRequest();
+        String id = run(request);
+
+        // Dispatch d'erreur du conteneur, après la fin du traitement : même requête, MDC déjà vidé.
+        request.setAttribute(RequestDispatcher.ERROR_REQUEST_URI, "/api/v1/me");
+        assertThat(run(request)).isEqualTo(id);
         assertThat(response.getHeader("X-Request-Id")).isEqualTo(id);
     }
 
