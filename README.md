@@ -51,7 +51,7 @@ API lancée depuis le poste, sur `localhost:8080`, avec la base de la pile Compo
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --wait postgres
 docker compose -f docker-compose.yml -f docker-compose.dev.yml run --rm migrate       # attend la fin des migrations
-set -a; . ./.env; set +a             # SENTINEL_DB_APP_PASSWORD
+set -a; . ./.env; set +a             # mot de passe de sentinel_app, origines autorisées, admin initial
 cd services/core-api && ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
 ```
 
@@ -63,6 +63,31 @@ Tests du backend (Docker requis : Testcontainers démarre un PostgreSQL 18 réel
 - PostgreSQL est publié sur `127.0.0.1:5432` uniquement, jamais sur le réseau local. `core-api` n'est pas publié : il sera exposé par le gateway.
 - `infrastructure/postgres/init/01-roles.sh` ne s'exécute que sur un volume vide. Après une modification de ce script ou des mots de passe de `.env`, repartir d'une base vierge avec `down -v`.
 - Rôles PostgreSQL : `postgres` (initialisation uniquement), `sentinel_owner` (migrations), `sentinel_app` (API, sans aucun droit de création).
+
+### Premier accès à l'API (avant le frontend)
+
+Au premier démarrage, core-api crée le SUPER_ADMIN décrit par `SENTINEL_BOOTSTRAP_ADMIN_*` (`.env`). Son mot de passe doit être changé à la première connexion : d'ici là, son jeton n'ouvre que `GET /api/v1/me`, le changement de mot de passe et le logout. Retirez ensuite ces variables de `.env`. Exemple avec l'API lancée depuis le poste (voir plus haut) :
+
+```bash
+API=http://127.0.0.1:8080/api/v1
+ORIGIN=http://localhost:5173         # une origine de SENTINEL_ALLOWED_ORIGINS, exigée par login, refresh et logout
+
+# Connexion : accessToken (15 min) dans le corps, refresh token dans le cookie sentinel_rt (Set-Cookie)
+curl -si -X POST "$API/auth/login" -H "Origin: $ORIGIN" -H 'Content-Type: application/json' \
+     -d '{"email":"admin@sentinel.local","password":"<SENTINEL_BOOTSTRAP_ADMIN_PASSWORD>"}'
+
+# Changement de mot de passe imposé : renvoie une nouvelle paire de jetons
+curl -s -X POST "$API/auth/change-password" -H "Authorization: Bearer <accessToken>" -H 'Content-Type: application/json' \
+     -d '{"currentPassword":"<actuel>","newPassword":"<nouveau, 12 caractères minimum>"}'
+
+curl -s "$API/me" -H "Authorization: Bearer <accessToken>"
+
+# Le cookie est Secure : curl ne le renvoie pas seul en HTTP, il se passe à la main
+curl -s -X POST "$API/auth/refresh" -H "Origin: $ORIGIN" -H "Cookie: sentinel_rt=<valeur>"
+curl -s -X POST "$API/auth/logout"  -H "Origin: $ORIGIN" -H "Cookie: sentinel_rt=<valeur>"
+```
+
+Dans la pile Compose, core-api n'est pas publié sur le poste : les mêmes requêtes passent par `docker compose -f docker-compose.yml -f docker-compose.dev.yml exec core-api curl …`, sur `http://localhost:8080`.
 
 ## Sécurité de l'API
 
@@ -76,6 +101,8 @@ Détails et justifications : §8 de la [spécification](docs/superpowers/specs/2
 - **Hachage :** Argon2id au minimum recommandé par l'OWASP (19 Mio, 2 itérations, parallélisme 1). La base refuse tout autre format de hash.
 - **Mots de passe temporaires :** 16 caractères tirés par `SecureRandom` d'un alphabet de 56 symboles sans caractères ambigus, soit environ 93 bits d'entropie.
 - **Matrice des permissions :** fixe, insérée par migration. `sentinel_app` ne peut que la lire : toute écriture est refusée par PostgreSQL.
+- **Sessions :** le refresh token (256 bits, seul son hash SHA-256 est stocké) tourne à chaque refresh. Il expire après 24 h d'inactivité et 7 jours au total. Un jeton déjà tourné présenté de nouveau révoque toute sa session. Le changement de mot de passe révoque toutes les sessions.
+- **Limitation des tentatives :** blocage progressif de 30 s à 15 min, à partir du 5ᵉ échec pour un compte depuis une IP et du 20ᵉ pour une IP. Aucun blocage n'est permanent, et un compte reste accessible depuis une autre IP. Les clés de limitation sont des empreintes HMAC : jamais l'identifiant ni l'IP en clair.
 
 ## Règles git
 

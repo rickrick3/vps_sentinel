@@ -74,6 +74,11 @@ public class Fixtures {
         return "10." + ((n >> 16) & 0xff) + "." + ((n >> 8) & 0xff) + "." + (n & 0xff);
     }
 
+    /** Adresse IPv6 de documentation ({@code 2001:db8::/32}) unique par appel, sous forme compacte. */
+    public static String uniqueIpv6() {
+        return "2001:db8::" + Integer.toHexString(SEQUENCE.incrementAndGet());
+    }
+
     /** Valeur au format d'une empreinte HMAC tronquée (32 caractères hexadécimaux), unique par appel. */
     public static String uniqueFingerprint() {
         return HexFormat.of().toHexDigits(System.nanoTime()) + HexFormat.of().toHexDigits((long) SEQUENCE.incrementAndGet());

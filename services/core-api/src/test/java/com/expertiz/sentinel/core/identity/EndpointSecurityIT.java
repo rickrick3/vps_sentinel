@@ -37,6 +37,12 @@ class EndpointSecurityIT extends IntegrationTest {
     /** Liste exhaustive des routes enregistrées accessibles sans jeton. */
     static final Set<String> PUBLIC = Set.of("GET /actuator/health", "GET /v3/api-docs", "GET /v3/api-docs.yaml");
 
+    /**
+     * Endpoints de session : publics, mais gardés par l'{@code Origin} et le cookie de session. Leurs réponses sans jeton
+     * (400, 401, 204) sont vérifiées par LoginIT, RefreshIT, LogoutIT et OriginCheckIT.
+     */
+    static final Set<String> SESSION = Set.of("POST /api/v1/auth/login", "POST /api/v1/auth/refresh", "POST /api/v1/auth/logout");
+
     /** Rendu des erreurs pour les dispatchs d'erreur du conteneur ; en requête directe, il exige un jeton. */
     static final String ERROR_PATH = "/error";
 
@@ -67,8 +73,11 @@ class EndpointSecurityIT extends IntegrationTest {
         return methods.isEmpty() ? List.of("GET") : methods.stream().map(Enum::name).toList();
     }
 
+    /** Toutes les routes enregistrées, hors endpoints de session. */
     private List<Route> allRoutes() {
-        return routes(context.getBeansOfType(RequestMappingInfoHandlerMapping.class).values().stream());
+        return routes(context.getBeansOfType(RequestMappingInfoHandlerMapping.class).values().stream()).stream()
+                .filter(route -> !SESSION.contains(route.key()))
+                .toList();
     }
 
     @Test
@@ -77,7 +86,8 @@ class EndpointSecurityIT extends IntegrationTest {
                 context.getBean("requestMappingHandlerMapping", RequestMappingInfoHandlerMapping.class);
 
         List<String> unprotected = routes(Stream.of(application)).stream()
-                .filter(route -> !PUBLIC.contains(route.key()) && !route.pattern().equals(ERROR_PATH))
+                .filter(route -> !PUBLIC.contains(route.key()) && !SESSION.contains(route.key()))
+                .filter(route -> !route.pattern().equals(ERROR_PATH))
                 .filter(route -> !AnnotatedElementUtils.hasAnnotation(route.handler().getMethod(), PreAuthorize.class)
                         && !AnnotatedElementUtils.hasAnnotation(route.handler().getBeanType(), PreAuthorize.class))
                 .map(Route::key)

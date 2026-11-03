@@ -160,7 +160,7 @@ Approuvés le 2026-11-02. La phase 0 (dépôt, poste, PostgreSQL de dev) est ter
   - Méthodes utilitaires `ownerJdbc()` (connexion `sentinel_owner`, pour les assertions) et `appJdbc()` (connexion `sentinel_app`, celle de l'application).
 - **Pas de nettoyage global** : `audit_logs` ne peut pas être vidée. Chaque test crée des données uniques (email, nom, IP) via `Fixtures`, et ses assertions sur l'audit filtrent par `target_id` ou `correlation_id`.
 - **IP client par test** : chaque test envoie `X-Forwarded-For: <Fixtures.uniqueIp()>`. Depuis 127.0.0.1, proxy de confiance par défaut, cela reproduit le gateway, et les compteurs de limitation ne se mélangent pas entre tests.
-- **Tests qui supposent un état global** (bootstrap, dernier SUPER_ADMIN) : ils héritent d'`IsolatedDatabaseIT`, qui démarre une base neuve pour la classe.
+- **Tests qui supposent un état global** (bootstrap, dernier SUPER_ADMIN) : ils héritent d'`IsolatedDatabaseIT`, qui démarre une base neuve pour la classe. Chaque sous-classe déclare sa base (`static final SentinelPostgres DATABASE = newDatabase()`) et son `@DynamicPropertySource`, donc aussi son propre contexte. Base commune : `ApplicationTestBase` (client HTTP, `AuthClient`, horloge, `Fixtures`).
 - Surefire inclut `**/*Test.java` et `**/*IT.java`.
 
 ---
@@ -738,10 +738,11 @@ class UntrustedProxyClientIpIT { @Test void forwardedForIgnored() { /* même req
 **Fichiers :**
 
 - Créer :
-  - dans `identity/internal/session/` : `LoginThrottleRepository.java`, `LoginThrottleService.java`, `RefreshTokenRepository.java` (insertion), `RefreshTokenService.java` (`startFamily`), `NewRefreshToken.java`, `RefreshCookies.java`, `AuthTokens.java`, `LoginService.java`, `LoginOutcome.java` ;
+  - dans `identity/internal/session/` : `LoginThrottleRepository.java`, `LoginThrottleService.java`, `RefreshTokenRepository.java` (insertion), `RefreshTokenService.java` (`startFamily`), `NewRefreshToken.java`, `RefreshCookies.java`, `AuthTokens.java`, `LoginService.java`, `LoginOutcome.java`, `ThrottleScope.java` (seuils 5 et 20), `SessionTokens.java` (access token et profil communs au login, au refresh et au changement de mot de passe), `SessionAudit.java` ;
   - `identity/web/AuthController.java` (login), `identity/web/LoginRequest.java`, `identity/web/AuthResponse.java`.
 - Modifier : `UserRepository` (ajout de `touchLastLogin`).
-- Tests : `ThrottleDelayTest`, `LoginIT`, `LoginThrottleIT`, `LoginAuditIT`.
+- Modifier : `shared/problem/ApiException` et `ProblemDetailsAdvice` (en-têtes optionnels : `Retry-After`, effacement du cookie).
+- Tests : `ThrottleDelayTest`, `RefreshCookiesTest`, `LoginIT`, `LoginThrottleIT`, `LoginAuditIT`, `support/AuthClient.java`.
 
 **Interfaces :**
 
@@ -749,8 +750,8 @@ class UntrustedProxyClientIpIT { @Test void forwardedForIgnored() { /* même req
   - **`LoginThrottleService`** :
     - `static Duration delayFor(int failures, int threshold)` ;
     - `Optional<Duration> blockedFor(String accountFp, String ipFp)` ;
-    - `ThrottleResult recordFailure(String accountFp, String ipFp)`, avec `record ThrottleResult(int accountIpFailures, int ipFailures, Optional<Duration> startedBlock, String blockedScope)` ;
-    - `void resetAccountIp(String accountFp, String ipFp)` ; `int clearAccount(String accountFp)`.
+    - `List<StartedBlock> recordFailure(String accountFp, String ipFp)`, avec `record StartedBlock(ThrottleScope scope, int failureCount, Duration duration)` : un même échec peut ouvrir les blocages des deux portées, chacun audité ; `accountIpBlockedFor` et `recordAccountIpFailure` pour le changement de mot de passe ;
+    - `void resetAccountIp(String accountFp, String ipFp)`. `int clearAccount(String accountFp)` arrive avec son premier consommateur, la réinitialisation par un admin (tâche 13).
   - **`record NewRefreshToken(String rawValue, UUID id, UUID familyId, Instant expiresAt, Instant sessionStartedAt)`** ; `RefreshTokenService.startFamily(UUID userId, String ip, String userAgent) : NewRefreshToken`.
   - **`RefreshCookies`** :
     - `ResponseCookie issue(NewRefreshToken t)` : `Max-Age = min(24 h, sessionStartedAt + 7 j − now)` en secondes ;
@@ -789,7 +790,7 @@ class UntrustedProxyClientIpIT { @Test void forwardedForIgnored() { /* même req
 @Test void ipScopeBlocksAfter20Failures() { /* 20 identifiants différents depuis la même IP → 21e tentative → 429 */ }
 @Test void blockedAttemptsNeitherVerifyNorExtend() { /* bon mot de passe pendant le blocage → 429 ; à la fin du blocage → 200 */ }
 @Test void successResetsAccountIpNotIpScope() { /* ownerJdbc : ligne ACCOUNT_IP supprimée ou à 0 ; ligne IP inchangée */ }
-@Test void parallelFailuresCountedExactly() { /* 10 threads (CountDownLatch) → failure_count == 10 */ }
+@Test void parallelFailuresCountedExactly() { /* 10 threads (CountDownLatch), 10 identifiants distincts depuis une même IP → failure_count de la portée IP == 10 (même compte et même IP serait non déterministe : les threads arrivés après le 5e échec reçoivent 429) */ }
 @Test void counterResetsAfterOneHour() { /* 3 échecs, advance(61 min), 1 échec → failure_count == 1 */ }
 // LoginAuditIT
 @ParameterizedTest @ValueSource(strings = {"S3cr3t-Passw0rd!", "p@ssw0rd-1234567"})
@@ -832,7 +833,8 @@ RETURNING failure_count
 
 - Modifier : `RefreshTokenRepository`, `RefreshTokenService`, `AuthController` (refresh, logout).
 - Créer : `identity/internal/session/RefreshOutcome.java`, `identity/internal/session/SessionCleanupJob.java`, `identity/internal/session/RevokedReason.java`.
-- Tests : `RefreshIT`, `LogoutIT`, `SessionCleanupJobIT`.
+- Créer aussi : `identity/internal/session/SchedulingConfig.java` (`@EnableScheduling`). Un refresh refusé efface le cookie (401 « Session expirée. Reconnectez-vous. »).
+- Tests : `RefreshIT`, `LogoutIT`, `SessionCleanupJobIT` (purge et enregistrement auprès du planificateur).
 
 **Interfaces :**
 
@@ -883,7 +885,8 @@ RETURNING failure_count
 
 - Créer : `identity/internal/session/ChangePasswordService.java`, `identity/internal/session/ChangePasswordOutcome.java`, `identity/internal/admin/SuperAdminLock.java`, `identity/internal/bootstrap/BootstrapAdminRunner.java`, `identity/web/ChangePasswordRequest.java`.
 - Modifier : `AuthController` (`POST /api/v1/auth/change-password`).
-- Tests : `ChangePasswordIT`, `BootstrapAdminIT` (hérite d'`IsolatedDatabaseIT`).
+- Créer aussi : `shared/text/EmailAddress.java` (forme du spec §10.3) ; le bootstrap refuse aussi un email invalide et un nom de plus de 120 caractères, avec un log d'erreur.
+- Tests : `ChangePasswordIT`, `BootstrapAdminIT` (hérite d'`IsolatedDatabaseIT` ; deux bootstraps concurrents ne créent qu'un admin), `EmailAddressTest`.
 
 **Interfaces :**
 
@@ -891,7 +894,7 @@ RETURNING failure_count
   - **`SuperAdminLock.acquire()`** : `SELECT pg_advisory_xact_lock(hashtext('sentinel.super_admin'))`. Il exige une transaction en cours (`MANDATORY`).
   - **`sealed interface ChangePasswordOutcome`** : `Changed(AuthTokens tokens)`, `WrongCurrentPassword()`, `Throttled(Duration retryAfter)`.
   - **`ChangePasswordService.change(UUID userId, String current, String next, String ip, String ua) : ChangePasswordOutcome`**.
-  - **`record ChangePasswordRequest(@NotBlank String currentPassword, @NotBlank String newPassword)`**.
+  - **`record ChangePasswordRequest(@NotBlank @Size(max=1024) String currentPassword, @NotBlank @Size(max=1024) String newPassword)`** : bornes avant tout hachage, comme au login.
   - **`BootstrapAdminRunner implements ApplicationRunner`** : sa méthode testable est `void bootstrap(String email, String password, String name)`.
 
 - [ ] **Étape 1 : écrire les tests.**

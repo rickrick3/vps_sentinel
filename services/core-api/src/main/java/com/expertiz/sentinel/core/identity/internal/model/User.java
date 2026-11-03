@@ -81,6 +81,14 @@ public class User extends AssignedIdEntity {
         this.updatedAt = now;
     }
 
+    /** Mot de passe choisi par l'utilisateur : plus de changement imposé ni d'expiration (spec §8.5). */
+    public void changePassword(String newPasswordHash, Instant now) {
+        this.passwordHash = Objects.requireNonNull(newPasswordHash, "newPasswordHash");
+        this.mustChangePassword = false;
+        this.passwordExpiresAt = null;
+        this.updatedAt = now;
+    }
+
     /** Champs auditables (liste blanche, spec §9.5) : jamais le hash ni les dates techniques. */
     public Map<String, Object> auditState() {
         Map<String, Object> state = new LinkedHashMap<>();

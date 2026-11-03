@@ -45,7 +45,7 @@ public class ProblemDetailsAdvice extends ResponseEntityExceptionHandler {
 
     @ExceptionHandler(ApiException.class)
     ResponseEntity<Object> apiException(ApiException ex, HttpServletRequest request) {
-        return respond(ex.type(), ex.getMessage(), ex.errors(), request, null);
+        return respond(ex.type(), ex.getMessage(), ex.errors(), request, ex.headers());
     }
 
     @ExceptionHandler(OptimisticLockingFailureException.class)
