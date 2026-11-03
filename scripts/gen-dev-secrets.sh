@@ -34,4 +34,7 @@ cd "$dir"
 openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 | tr -d '\r' >jwt-private.pem
 openssl pkey -in jwt-private.pem -pubout | tr -d '\r' >jwt-public.pem
 openssl rand -base64 32 | tr -d '\r' >hmac.key
+# Compose monte ces fichiers avec leurs droits d'origine : le conteneur core-api (uid 10001) doit pouvoir les lire.
+# Clés jetables de développement ; en production, les secrets restent réservés à l'uid 10001 (docs/deployment).
+chmod 0644 jwt-private.pem jwt-public.pem hmac.key
 echo "Secrets de développement générés dans $dir"

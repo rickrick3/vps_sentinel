@@ -1,7 +1,11 @@
 package com.expertiz.sentinel.core.support;
 
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import org.junit.jupiter.api.BeforeEach;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -13,6 +17,7 @@ import org.springframework.test.web.servlet.client.RestTestClient;
  * requêtes traversent Tomcat.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@Import(TestClockConfig.class)
 public abstract class IntegrationTest {
 
     protected static final SentinelPostgres DATABASE = SentinelPostgres.shared();
@@ -22,6 +27,8 @@ public abstract class IntegrationTest {
         registry.add("spring.datasource.url", DATABASE::appJdbcUrl);
         registry.add("spring.datasource.username", () -> SentinelPostgres.APP);
         registry.add("spring.datasource.password", () -> SentinelPostgres.APP_PASSWORD);
+        // Vrai chemin de lecture des secrets, avec des clés générées une fois par JVM.
+        registry.add("sentinel.secrets.dir", () -> TestSecrets.directory().toString());
     }
 
     @LocalServerPort
@@ -29,9 +36,14 @@ public abstract class IntegrationTest {
 
     protected RestTestClient http;
 
+    /** Horloge de l'application, remise à l'heure courante avant chaque test. */
+    @Autowired
+    protected TestClock clock;
+
     @BeforeEach
     void bindHttpClient() {
         http = RestTestClient.bindToServer().baseUrl("http://localhost:" + port).build();
+        clock.set(Instant.now().truncatedTo(ChronoUnit.MICROS));
     }
 
     protected JdbcClient ownerJdbc() {

@@ -77,10 +77,10 @@
       <version>${java-uuid-generator.version}</version>
     </dependency>
 
+    <!-- Portée compile : les noms de contraintes violées se lisent dans PSQLException (Problem Details). -->
     <dependency>
       <groupId>org.postgresql</groupId>
       <artifactId>postgresql</artifactId>
-      <scope>runtime</scope>
     </dependency>
 
     <dependency>

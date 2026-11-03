@@ -55,6 +55,8 @@ set -a; . ./.env; set +a             # SENTINEL_DB_APP_PASSWORD
 cd services/core-api && ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
 ```
 
+Sans `/run/secrets`, l'API lancée depuis le poste en profil `dev` génère des clés JWT et HMAC éphémères, avec un avertissement dans les logs : les jetons émis ne survivent pas à un redémarrage. Dans tout autre profil, un secret absent empêche le démarrage.
+
 Tests du backend (Docker requis : Testcontainers démarre un PostgreSQL 18 réel) : `cd services/core-api && ./mvnw verify`.
 
 - `migrate` applique les migrations avec `sentinel_owner`, puis s'arrête. `core-api` ne démarre que si `migrate` a réussi, et refuse de démarrer si une migration manque ou a été modifiée : l'API valide les migrations sans jamais les exécuter.

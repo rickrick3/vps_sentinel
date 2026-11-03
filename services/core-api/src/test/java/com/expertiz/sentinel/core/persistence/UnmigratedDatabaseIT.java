@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.expertiz.sentinel.core.CoreApiApplication;
 import com.expertiz.sentinel.core.support.SentinelPostgres;
+import com.expertiz.sentinel.core.support.TestSecrets;
 import org.flywaydb.core.api.exception.FlywayValidateException;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.builder.SpringApplicationBuilder;
@@ -70,6 +71,8 @@ class UnmigratedDatabaseIT {
         new SpringApplicationBuilder(CoreApiApplication.class)
                 .run(
                         "--server.port=0",
+                        // Secrets valides : seul l'état des migrations doit pouvoir empêcher le démarrage.
+                        "--sentinel.secrets.dir=" + TestSecrets.directory(),
                         "--spring.datasource.url=" + database.appJdbcUrl(),
                         "--spring.datasource.username=" + SentinelPostgres.APP,
                         "--spring.datasource.password=" + SentinelPostgres.APP_PASSWORD)
