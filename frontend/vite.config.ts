@@ -5,6 +5,19 @@ import { defineConfig } from 'vite'
 // page, comme derrière le gateway, et le cookie de session suit.
 export default defineConfig({
   plugins: [react()],
+  build: {
+    rolldownOptions: {
+      output: {
+        // Bibliothèques dans leurs propres fichiers : elles restent en cache d'une version de l'application à l'autre.
+        codeSplitting: {
+          groups: [
+            { name: 'react', test: /node_modules[\\/](react|react-dom|react-router|scheduler|@tanstack)[\\/]/ },
+            { name: 'mantine', test: /node_modules[\\/]@mantine[\\/]/ },
+          ],
+        },
+      },
+    },
+  },
   server: {
     port: 5173,
     // Origine autorisée en dev : http://localhost:5173 (SENTINEL_ALLOWED_ORIGINS). Un autre port ferait refuser le login.
