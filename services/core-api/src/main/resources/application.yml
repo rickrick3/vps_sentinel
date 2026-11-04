@@ -17,6 +17,11 @@ spring:
     schemas: sentinel
     create-schemas: false
 
+  web:
+    # Interface en français (spec §4) : messages de validation en français quel que soit Accept-Language.
+    locale: fr
+    locale-resolver: fixed
+
 server:
   forward-headers-strategy: native
 

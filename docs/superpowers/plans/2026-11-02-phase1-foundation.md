@@ -454,7 +454,7 @@ SENTINEL_ACME_WEBROOT=
 - Produit :
   - `enum ProblemType { VALIDATION_ERROR("validation-error",400), UNAUTHORIZED("unauthorized",401), FORBIDDEN("forbidden",403), ORIGIN_NOT_ALLOWED("origin-not-allowed",403), PASSWORD_CHANGE_REQUIRED("password-change-required",403), NOT_FOUND("not-found",404), UNSUPPORTED_MEDIA_TYPE("unsupported-media-type",415), VERSION_CONFLICT("version-conflict",409), LAST_SUPER_ADMIN("last-super-admin",409), SELF_MODIFICATION_FORBIDDEN("self-modification-forbidden",409), SERVER_IN_USE("server-in-use",409), SERVER_NOT_DEPLOYABLE("server-not-deployable",409), DEPLOYMENT_EXISTS("deployment-exists",409), DUPLICATE("duplicate",409), LOGIN_THROTTLED("login-throttled",429), RATE_LIMITED("rate-limited",429), INTERNAL_ERROR("internal-error",500); String code(); int status(); URI type(); }` ;
   - `ApiException(ProblemType type, String detail)` et `ApiException(ProblemType type, String detail, List<FieldViolation> errors)` ; `record FieldViolation(String field, String message)` ;
-  - `ProblemWriter#write(HttpServletResponse res, ProblemType type, String detail)`, pour les filtres et les handlers de sécurité ;
+  - `ProblemWriter#write(HttpServletRequest req, HttpServletResponse res, ProblemType type, String detail)`, pour les filtres et les handlers de sécurité (la requête fournit `instance`) ;
   - `record ConstraintMapping(String constraint, ProblemType type, String field)`. Chaque module déclare des beans de ce type, et l'advice les collecte ;
   - `record SortSpec(Map<String,String> apiToProperty, String defaultSort)` ; `PageRequests.of(Integer page, Integer size, String sort, SortSpec spec) : Pageable` ;
   - `record PageResponse<T>(List<T> items, int page, int size, long totalItems, int totalPages)` avec `static <T> PageResponse<T> from(Page<T> page)` ;
@@ -501,7 +501,7 @@ SENTINEL_ACME_WEBROOT=
 
 **Fichiers :**
 
-- Créer, dans `shared/` : `secrets/SentinelSecrets.java`, `crypto/Fingerprints.java`, `text/TextRules.java`, `text/NoControlChars.java` (avec son validateur), `text/Hostname.java` (avec son validateur), `text/HttpUrl.java` (avec son validateur), `persistence/UuidV7.java`, `persistence/AssignedIdEntity.java`.
+- Créer, dans `shared/` : `secrets/SentinelSecrets.java`, `crypto/Fingerprints.java`, `text/TextRules.java`, `text/NoControlChars.java` (avec son validateur), `text/Hostname.java` (avec son validateur), `text/HttpUrl.java` (avec son validateur), `persistence/UuidV7.java`. `persistence/AssignedIdEntity.java` est reporté à la tâche 8, son premier consommateur.
 - Tests : `FingerprintsTest`, `SentinelSecretsTest`, `HostnameValidatorTest`, `HttpUrlValidatorTest`, `TextRulesTest`, `support/TestSecrets.java`.
 - Modifier : `support/IntegrationTest.java`. Son `@DynamicPropertySource` fixe `sentinel.secrets.dir` sur `TestSecrets.directory()`, un dossier temporaire contenant une paire RSA et une clé HMAC générées une seule fois par JVM. Sans cela, le chargeur ferait échouer le démarrage de tous les tests d'intégration ; et le vrai chemin de lecture est ainsi testé.
 
@@ -608,8 +608,8 @@ CREATE TRIGGER audit_logs_no_truncate BEFORE TRUNCATE ON audit_logs
 
 **Fichiers :**
 
-- Créer : `V3__identity.sql`, `V4__sessions.sql`, `shared/security/Permissions.java`, et dans `identity/internal/model/` : `User.java`, `Role.java`, `RoleCode.java`, `UserStatus.java`, `UserRepository.java`, `PermissionMatrix.java`, `PasswordPolicy.java`, `TemporaryPasswordGenerator.java`, `PasswordConfig.java`.
-- Tests : `PermissionMatrixIT`, `PasswordPolicyTest`, `TemporaryPasswordGeneratorTest`, `UserPersistenceIT`.
+- Créer : `shared/persistence/AssignedIdEntity.java` (reporté de la tâche 6, interface décrite à la tâche 6 ; testé par `UserPersistenceIT`), `V3__identity.sql`, `V4__sessions.sql`, `shared/security/Permissions.java`, et dans `identity/internal/model/` : `User.java`, `Role.java`, `RoleCode.java`, `UserStatus.java`, `UserRepository.java`, `RoleRepository.java` (lecture seule, `findByCode`), `PermissionMatrix.java`, `PasswordPolicy.java`, `TemporaryPasswordGenerator.java`, `PasswordConfig.java`.
+- Tests : `PermissionMatrixIT`, `PasswordPolicyTest`, `TemporaryPasswordGeneratorTest`, `PasswordEncoderTest`, `UserPersistenceIT`, `IdentitySchemaIT` (contraintes nommées : email normalisé, hash Argon2id seul, empreintes et hash de jeton au format hexadécimal, portées de limitation, motifs de révocation).
 
 **Interfaces :**
 
@@ -623,7 +623,7 @@ CREATE TRIGGER audit_logs_no_truncate BEFORE TRUNCATE ON audit_logs
   - **`PermissionMatrix.permissionsOf(RoleCode) : Set<String>`** : chargée depuis la base au démarrage, immuable.
   - **`PasswordPolicy.check(String field, String password, String email)`** : lève `ApiException(VALIDATION_ERROR, …, [FieldViolation(field, message)])`.
   - **`TemporaryPasswordGenerator`** : `static final String ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789"` ; constructeur `TemporaryPasswordGenerator(SecureRandom)` ; `String generate()` (16 caractères).
-  - **`PasswordEncoder`** : `DelegatingPasswordEncoder` avec `argon2` par défaut, implémenté par `Argon2PasswordEncoder.defaultsForSpringSecurity_v5_8()`.
+  - **`PasswordEncoder`** : `DelegatingPasswordEncoder` avec `argon2` par défaut, implémenté par `Argon2PasswordEncoder` aux paramètres minimaux de l'OWASP (sel 16 octets, hash 32 octets, m = 19 Mio, t = 2, p = 1 ; ceux de `defaultsForSpringSecurity_v5_8()`, m = 16 Mio, sont en dessous). Un hash d'un autre format ne correspond jamais et ne lève pas d'exception.
 
 - [ ] **Étape 1 : écrire `V3__identity.sql`.**
   - Tables du spec §9.2 : `users`, `roles`, `permissions`, `role_permissions`, `user_roles`.
@@ -681,14 +681,15 @@ void appRoleCannotAlterMatrix(String table, String op) { /* appJdbc : l'instruct
 **Fichiers :**
 
 - Créer :
-  - dans `identity/internal/security/` : `JwtConfig.java`, `JwtClaims.java`, `AccessTokenIssuer.java`, `IssuedAccessToken.java`, `SecurityConfig.java`, `ProblemAuthenticationEntryPoint.java`, `ProblemAccessDeniedHandler.java`, `OriginCheckFilter.java`, `PasswordChangeRequiredFilter.java`, `SentinelSecurityProperties.java` ;
-  - `identity/web/MeController.java`, `identity/web/MeResponse.java`.
-- Tests : `support/Fixtures.java` (première version), `identity/MeIT`, `identity/TokenTamperingIT`, `identity/PasswordChangeRequiredIT`, `identity/OriginCheckFilterTest`, `identity/SecurityHeadersIT`, `identity/ClientIpIT`.
+  - dans `identity/internal/security/` : `JwtConfig.java`, `JwtClaims.java`, `AccessTokenIssuer.java`, `IssuedAccessToken.java`, `SecurityConfig.java`, `ProblemAuthenticationEntryPoint.java`, `ProblemAccessDeniedHandler.java`, `OriginCheckFilter.java`, `PasswordChangeRequiredFilter.java`, `SentinelSecurityProperties.java`, `SessionEndpoints.java` (matcher unique des trois endpoints de session) ;
+  - `identity/web/MeController.java`, `identity/web/MeResponse.java` ;
+  - `shared/problem/ProblemErrorController.java` : remplace la page d'erreur de Boot, les dispatchs d'erreur du conteneur (pare-feu, exception de filtre) sont rendus en Problem Details avec leur statut d'origine. `CorrelationIdFilter` garde le même identifiant pour ce dispatch.
+- Tests : `support/Fixtures.java` (première version), `support/TestEndpoints.java` (`/test/secured`, `/test/permission/{p}`, `/test/ip`), `support/TestTokens.java`, `identity/MeIT`, `identity/TokenTamperingIT`, `identity/AccessTokenIssuerIT`, `identity/PasswordChangeRequiredIT`, `identity/internal/security/OriginCheckFilterTest`, `identity/OriginCheckIT`, `identity/internal/security/SecurityProblemHandlersTest`, `identity/SecurityHeadersIT`, `identity/ClientIpIT`, `identity/UntrustedProxyClientIpIT`, `identity/MethodSecurityIT`, `identity/EndpointSecurityIT` (première version du refus par défaut, étendue par la tâche 17), `shared/problem/ErrorDispatchIT`.
 
 **Interfaces :**
 
 - Produit :
-  - **`JwtClaims`** : `EMAIL="email"`, `ROLE="role"`, `PERMS="perms"`, `PCR="pcr"`, `ISSUER="vps-sentinel"`.
+  - **`JwtClaims`** : `EMAIL="email"`, `ROLE="role"`, `PERMS="perms"`, `PCR="pcr"`, `ISSUER="vps-sentinel"`, `AUDIENCE="core-api"`, `TYPE="at+jwt"` (en-tête `typ`). Le décodeur exige `typ`, `iss`, `aud`, `exp`, `iat` (pas dans le futur) et chaque claim avec son type, sans tolérance de décalage (spec §8.1, v2.2).
   - **`record IssuedAccessToken(String value, long expiresInSeconds)`** ; `AccessTokenIssuer.issue(User user) : IssuedAccessToken`. Les claims viennent de la base via `PermissionMatrix`, et `iat`/`exp` du `Clock`.
   - **`record MeResponse(UUID id, String email, String fullName, String role, List<String> permissions, boolean mustChangePassword)`** ; `GET /api/v1/me`.
   - **`SecurityConfig`** :
@@ -719,8 +720,9 @@ void appRoleCannotAlterMatrix(String table, String op) { /* appJdbc : l'instruct
 @Test void noCorsHeaders() { /* requête avec Origin: https://evil.example → aucun Access-Control-Allow-Origin */ }
 // ClientIpIT
 @Test void trustedProxyForwardedForIsUsed() { /* depuis 127.0.0.1 avec X-Forwarded-For 10.1.2.3 → RequestInfo.clientIp() == 10.1.2.3 (endpoint de test /test/ip) */ }
-@Nested @TestPropertySource(properties = "server.tomcat.remoteip.internal-proxies=10\\.99\\.99\\.99")
-class UntrustedProxy { @Test void forwardedForIgnored() { /* même requête → 127.0.0.1 */ } }
+// UntrustedProxyClientIpIT (classe à part : un @Nested avec @TestPropertySource lierait la classe englobante au mauvais contexte)
+@TestPropertySource(properties = "server.tomcat.remoteip.internal-proxies=10\\.99\\.99\\.99")
+class UntrustedProxyClientIpIT { @Test void forwardedForIgnored() { /* même requête → 127.0.0.1 */ } }
 ```
 
 - [ ] **Étape 2 : lancer les tests.** Attendu : échec.

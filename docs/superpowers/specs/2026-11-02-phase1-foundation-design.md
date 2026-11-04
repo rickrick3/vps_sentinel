@@ -1,7 +1,7 @@
 # VPS Sentinel — Phase 1 « Foundation » — Spécification de conception
 
 **Date :** 2026-11-02
-**Version :** 2.1 (intègre la revue architecturale, les arbitrages Q1 à Q9 et les précisions de la phase 0)
+**Version :** 2.2 (intègre la revue architecturale, les arbitrages Q1 à Q9, les précisions de la phase 0 et celles du jalon M3)
 **Statut :** Validée le 2026-11-02
 **Référence :** [TAD v1.0](../../architecture/TAD-v1.0.md). Les renvois « TAD §x » pointent vers ce document ; les renvois « §x » sans préfixe pointent vers la présente spec.
 
@@ -12,6 +12,7 @@
 | 1 | 2026-11-02 | Première version (commit `ec8065e`) |
 | 2 | 2026-11-02 | Intégration des 10 MUST FIX et des SHOULD FIX retenus de la revue, des arbitrages Q1 à Q9 et des précisions sur l'audit des identifiants et la concurrence des refresh tokens. Suivi détaillé en annexe A |
 | 2.1 | 2026-11-02 | Validation. JUnit Jupiter 6, version gérée par Spring Boot 4.1 (§4). Précisions issues de la phase 0 : ports de dev publiés sur la boucle locale (§6.3) ; volume PostgreSQL 18 monté sur `/var/lib/postgresql` (§6.1) ; `TEMPORARY` retiré et bases `postgres` et `template1` fermées à `PUBLIC` (§6.5, §13.5) |
+| 2.2 | 2026-11-03 | Jalon M3, à la demande de l'utilisateur : `aud = core-api` et `typ: at+jwt` exigés sur l'access token, validation explicite de chaque claim (§8.1, §17) |
 
 ---
 
@@ -373,7 +374,8 @@ Spring Modulith (`ApplicationModules.verify()`) interdit l'accès aux packages i
 ### 8.1 Access token
 
 - JWT signé en **RS256**, valable **15 minutes**.
-- Claims : `iss = vps-sentinel`, `sub` (id utilisateur), `email`, `iat`, `exp`, `jti`, `role`, `perms` (permissions du rôle), `pcr` (booléen « changement de mot de passe requis »).
+- En-tête `typ: at+jwt` (RFC 9068). Claims : `iss = vps-sentinel`, `aud = core-api`, `sub` (id utilisateur), `email`, `iat`, `exp`, `jti`, `role`, `perms` (permissions du rôle), `pcr` (booléen « changement de mot de passe requis »).
+- Validation : signature RS256, `typ`, `iss`, `aud`, `exp` et `iat` obligatoires (`iat` jamais dans le futur), présence et type de chaque claim ; aucune tolérance de décalage d'horloge, l'émetteur et le vérificateur partageant la même horloge.
 - Les claims sont **toujours calculés depuis la base** au moment de l'émission (login, refresh, changement de mot de passe), jamais copiés d'un ancien jeton.
 - Les autorités Spring Security sont construites depuis `perms`. Le jeton est autoportant : un futur Monitoring Service pourra le valider avec la seule clé publique.
 - Validation via `spring-boot-starter-oauth2-resource-server` (décodeur Nimbus, clé publique RSA ; seul RS256 est accepté).
@@ -1317,7 +1319,7 @@ Relevés dans le TAD ou dans la revue, hors périmètre de la phase 1. Ils sont 
 - **Sondes externes (TAD §6.3) et watchdog indépendant (TAD §9.5) :** aucune phase de la roadmap ne les porte. Le watchdog est aussi une condition de production (§15).
 - **Clés JWT :**
   - distribution de la clé publique au Monitoring Service (fichier partagé ou endpoint JWKS) ;
-  - ajout de `kid` pour la rotation des clés et d'`aud` pour séparer les services.
+  - rotation des clés. Le `kid` émis est déjà l'empreinte RFC 7638 de la clé. Chaque service aura son propre `aud` : core-api n'accepte que `core-api` depuis la phase 1.
 
   Phase 3.
 - **Routage du gateway par service :** convention à fixer avant l'arrivée du Monitoring Service, pour éviter les conflits de chemins sous `/api/v1` (phase 3).
