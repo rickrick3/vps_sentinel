@@ -80,6 +80,13 @@ class LoginThrottleRepository {
                 .update();
     }
 
+    /** Tous les compteurs compte + IP d'un compte, quelle que soit l'IP. */
+    int deleteAccount(String accountFp) {
+        return jdbc.sql("DELETE FROM login_throttles WHERE scope = 'ACCOUNT_IP' AND account_fp = :accountFp")
+                .param("accountFp", accountFp)
+                .update();
+    }
+
     /** Compteurs sans échec depuis {@code lastFailureBefore} et sans blocage en cours. */
     int deleteStale(Instant lastFailureBefore, Instant now) {
         return jdbc.sql("""

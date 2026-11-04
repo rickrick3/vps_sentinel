@@ -19,7 +19,7 @@ class RefreshCookiesTest {
 
     private static RefreshCookies cookies(boolean secure) {
         var properties = new SentinelSecurityProperties(List.of(), secure, Duration.ofMinutes(15), Duration.ofHours(24),
-                Duration.ofDays(7));
+                Duration.ofDays(7), Duration.ofHours(72));
         return new RefreshCookies(properties, Clock.fixed(NOW, ZoneOffset.UTC));
     }
 

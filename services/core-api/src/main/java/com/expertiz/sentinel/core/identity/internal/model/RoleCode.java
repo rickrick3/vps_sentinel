@@ -6,5 +6,8 @@ public enum RoleCode {
     INFRA_ADMIN,
     DEVOPS,
     DEVELOPER,
-    VIEWER
+    VIEWER;
+
+    /** Les codes valides, pour {@code @Pattern} sur une requête : une valeur inconnue est une erreur de champ. */
+    public static final String PATTERN = "SUPER_ADMIN|INFRA_ADMIN|DEVOPS|DEVELOPER|VIEWER";
 }

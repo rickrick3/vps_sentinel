@@ -928,14 +928,16 @@ RETURNING failure_count
 - Créer :
   - dans `identity/internal/admin/` : `UserAdminService.java`, `PatchUserCommand.java`, `UserQueryService.java`, `IdentityConstraintMappings.java` ;
   - dans `identity/web/` : `UsersController.java`, `UserResponse.java`, `CreateUserRequest.java`, `CreatedUserResponse.java`, `TemporaryPasswordResponse.java`.
-- Tests : `UsersIT`, `LastSuperAdminIT` (hérite d'`IsolatedDatabaseIT`), `PatchUserCommandTest`.
+- Créer aussi : `shared/text/EmailFormat.java` et son validateur (forme normalisée, une seule passe de validation avec les autres champs) ; `RoleCode.PATTERN` pour `@Pattern` ; `identity/web/PatchUserRequest.java` (forme documentée du `PATCH`).
+- Modifier : `User` (`rename`, `changeRole`, `disable`, `enable`, `delete`, `resetPassword`), `UserRepository` (`JpaSpecificationExecutor`, `countByRoleCodeAndStatusAndIdNot`), `LoginThrottleService.clearAccount`, `SentinelSecurityProperties.temporaryPasswordTtl`.
+- Tests : `UsersIT`, `LastSuperAdminIT` (hérite d'`IsolatedDatabaseIT`), `PatchUserCommandTest`, `RoleCodeTest`, `EmailFormatValidatorTest`.
 
 **Interfaces :**
 
 - Consomme : `SuperAdminLock.acquire()`, `RefreshTokenService.revokeAllForUser`, `LoginThrottleService.clearAccount`, `Fingerprints.identifier`, `TemporaryPasswordGenerator`, `PasswordPolicy`.
 - Produit :
   - **Endpoints** du spec §10.1 pour `/api/v1/users` (`@PreAuthorize` avec `Permissions.USER_READ` ou `USER_MANAGE`). `SortSpec` : `fullName`, `email`, `createdAt`, `lastLoginAt` ; tri par défaut `fullName,asc`.
-  - **`PatchUserCommand.parse(ObjectNode body) : PatchUserCommand`** (Jackson 3, `tools.jackson.databind.node.ObjectNode`). Elle distingue un champ absent (inchangé) d'un champ `null` explicite (400 sur ce champ). Champ inconnu → 400. `version` est obligatoire.
+  - **`PatchUserCommand.parse(Map<String, Object> body) : PatchUserCommand`** (l'objet JSON désérialisé, clés à valeur `null` comprises ; un `ObjectNode` de Jackson 3 en paramètre fait échouer l'analyse de springdoc 3.2). Le corps est documenté par `PatchUserRequest` (`@Operation(requestBody = …)`). Elle distingue un champ absent (inchangé) d'un champ `null` explicite (400 sur ce champ). Champ inconnu → 400. `version` est obligatoire.
   - **`record CreatedUserResponse(UserResponse user, String temporaryPassword, Instant temporaryPasswordExpiresAt)`** ; **`record TemporaryPasswordResponse(String temporaryPassword, Instant temporaryPasswordExpiresAt)`**.
   - **Bean `ConstraintMapping("uq_users_email_active", DUPLICATE, "email")`**.
 
@@ -966,7 +968,8 @@ RETURNING failure_count
 
 - [ ] **Étape 2 : lancer les tests.** Attendu : échec.
 - [ ] **Étape 3 : implémenter.**
-  - Toute opération qui réduit le nombre de SUPER_ADMIN appelle `SuperAdminLock.acquire()`, puis compte les SUPER_ADMIN actifs autres que la cible.
+  - Toute opération qui réduit le nombre de SUPER_ADMIN appelle `SuperAdminLock.acquire()`, puis compte les SUPER_ADMIN actifs autres que la cible. Le verrou est pris avant de lire la cible : pour un `PATCH` qui porte `role` ou `status`, et pour toute suppression.
+  - Audit d'un `PATCH` : un événement par nature de changement, avec ses seuls champs modifiés (`USER_UPDATED` pour `fullName`, `USER_ROLE_CHANGED`, `USER_DISABLED` ou `USER_ENABLED`) ; une valeur identique n'est pas un changement. Révocation `USER_DISABLED` si le compte est désactivé, sinon `ROLE_CHANGED` si le rôle change.
   - La réinitialisation calcule `Fingerprints.identifier(user.email)` pour appeler `clearAccount`.
 - [ ] **Étape 4 : relancer.** Attendu : PASS.
 - [ ] **Étape 5 : commit.** `git commit -m "feat(identity): user administration with guardrails"`

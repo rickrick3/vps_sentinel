@@ -78,6 +78,15 @@ public class LoginThrottleService {
         throttles.deleteAccountIp(accountFp, ipFp);
     }
 
+    /**
+     * Réinitialisation par un admin (spec §8.4) : les compteurs compte + IP du compte sont supprimés, quelle que soit
+     * l'IP. Les compteurs par IP restent : ils ne visent pas ce compte. Renvoie le nombre de compteurs supprimés.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public int clearAccount(String accountFp) {
+        return throttles.deleteAccount(accountFp);
+    }
+
     private void count(ThrottleScope scope, String accountFp, String ipFp, List<StartedBlock> started) {
         Instant now = clock.instant();
         LoginThrottleRepository.Counter counter = throttles.recordFailure(scope, accountFp, ipFp, now);

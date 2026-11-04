@@ -87,6 +87,19 @@ curl -s -X POST "$API/auth/refresh" -H "Origin: $ORIGIN" -H "Cookie: sentinel_rt
 curl -s -X POST "$API/auth/logout"  -H "Origin: $ORIGIN" -H "Cookie: sentinel_rt=<valeur>"
 ```
 
+Ensuite, un SUPER_ADMIN gère les comptes (`user:read` suffit pour lire) :
+
+```bash
+# Création : le mot de passe temporaire (72 h) n'est renvoyé qu'une fois, dans cette réponse
+curl -s -X POST "$API/users" -H "Authorization: Bearer <accessToken>" -H 'Content-Type: application/json' \
+     -d '{"email":"alice@exemple.fr","fullName":"Alice Martin","role":"DEVOPS"}'
+curl -s "$API/users?q=alice&role=DEVOPS&sort=fullName,asc" -H "Authorization: Bearer <accessToken>"
+# Modification partielle : champs absents inchangés, version obligatoire (lue dans la réponse précédente)
+curl -s -X PATCH "$API/users/<id>" -H "Authorization: Bearer <accessToken>" -H 'Content-Type: application/json' \
+     -d '{"role":"VIEWER","version":0}'
+curl -s -X POST "$API/users/<id>/reset-password" -H "Authorization: Bearer <accessToken>"
+```
+
 Dans la pile Compose, core-api n'est pas publié sur le poste : les mêmes requêtes passent par `docker compose -f docker-compose.yml -f docker-compose.dev.yml exec core-api curl …`, sur `http://localhost:8080`.
 
 ## Sécurité de l'API

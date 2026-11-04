@@ -29,6 +29,7 @@ class IdentitySchemaIT {
         return database.appJdbc();
     }
 
+    // Comme l'application, un utilisateur a toujours un rôle : la base est partagée avec les tests qui lisent les comptes.
     @BeforeEach
     void user() {
         userId = app().sql("""
@@ -38,6 +39,9 @@ class IdentitySchemaIT {
                 .param("hash", HASH)
                 .query(UUID.class)
                 .single();
+        app().sql("INSERT INTO user_roles (user_id, role_id) SELECT :id, id FROM roles WHERE code = 'VIEWER'")
+                .param("id", userId)
+                .update();
     }
 
     @ParameterizedTest
