@@ -50,7 +50,7 @@ API lancée depuis le poste, sur `localhost:8080`, avec la base de la pile Compo
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --wait postgres
-docker compose -f docker-compose.yml -f docker-compose.dev.yml run --rm migrate       # attend la fin des migrations
+docker compose -f docker-compose.yml -f docker-compose.dev.yml run --rm --build migrate   # image reconstruite : elle embarque les migrations
 set -a; . ./.env; set +a             # mot de passe de sentinel_app, origines autorisées, admin initial
 cd services/core-api && ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
 ```

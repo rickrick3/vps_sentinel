@@ -1,4 +1,5 @@
 import { MantineProvider } from '@mantine/core'
+import { Notifications } from '@mantine/notifications'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render } from '@testing-library/react'
 import type { ReactElement, ReactNode } from 'react'
@@ -18,6 +19,7 @@ function testQueryClient() {
 function Providers({ queryClient, children }: { queryClient: QueryClient; children: ReactNode }) {
   return (
     <MantineProvider theme={theme} env="test">
+      <Notifications />
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     </MantineProvider>
   )
