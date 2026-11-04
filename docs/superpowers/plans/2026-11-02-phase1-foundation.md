@@ -26,7 +26,7 @@
 
 **Versions frontend :** Node 24 ; TypeScript `5.9.3` ; Vite `8.3.5` ; `@vitejs/plugin-react` `6.2.1` ; React et React DOM `19.3.1` ; `@mantine/*` `9.7.4` ; `@tanstack/react-query` `5.105.2` ; `react-router` `8.5.1` ; `openapi-typescript` `7.13.0` ; `openapi-fetch` `0.17.0`.
 
-**Outillage frontend :** Vitest `5.0.5` ; jsdom `30.1.3` ; MSW `3.0.3` ; `@testing-library/react` `16.3.3`, `user-event` `14.6.8`, `jest-dom` `7.0.1` ; ESLint `9.39.5` ; `typescript-eslint` `8.72.1` ; `eslint-plugin-react` `7.37.5` ; `eslint-plugin-react-hooks` `7.1.1` ; `@playwright/test` `1.64.1`.
+**Outillage frontend :** Vitest `5.0.5` ; jsdom `29.1.1` (jsdom 30 exige Node ≥ 24.15 ; poste en Node 24.11, choix de l'utilisateur du 2026-11-04) ; MSW `3.0.3` ; `@testing-library/react` `16.3.3`, `user-event` `14.6.8`, `jest-dom` `7.0.1` ; ESLint `9.39.5` ; `typescript-eslint` `8.72.1` ; `eslint-plugin-react` `7.37.5` ; `eslint-plugin-react-hooks` `7.1.1` ; `@playwright/test` `1.64.1`.
 
 **Images Docker :** `postgres:18`, `flyway/flyway:12.4.0-alpine`, `eclipse-temurin:25-jdk`, `eclipse-temurin:25-jre`, `node:24-alpine`, `nginx:1.30.6-alpine`.
 
@@ -1201,16 +1201,19 @@ void accessFollowsMatrix(EndpointCase c, RoleCode role) {
 **Fichiers :**
 
 - Créer : `frontend/` (template `react-ts`), `package.json` (versions des Global Constraints), `vite.config.ts`, `eslint.config.js`, `vitest.config.ts`, `src/test/setup.ts`, `src/test/server.ts`, `src/api/schema.d.ts` (généré), `src/api/client.ts`, `src/api/problem.ts`, `src/auth/permissions.ts`, `src/theme.ts`, `src/main.tsx`, `src/router.tsx`, `src/layout/AppLayout.tsx`, `frontend/.dockerignore`.
-- Tests : `src/layout/AppLayout.test.tsx`, `src/api/problem.test.ts`.
+- Créer aussi : `src/test/render.tsx` (`renderWithUser`, `renderApp`), `src/test/fixtures.ts`, `src/layout/PlaceholderPage.tsx`, `src/layout/StatusPages.tsx` (chargement, 403, 404, erreur de route), `public/favicon.svg`.
+- Tests : `src/layout/AppLayout.test.tsx`, `src/api/problem.test.ts`, `src/eslintConfig.test.ts` (la configuration réelle refuse `dangerouslySetInnerHTML`, spec §13.7).
 
 **Interfaces :**
 
 - Produit :
   - **Scripts npm :** `dev`, `build` (`tsc -b && vite build`), `lint` (`eslint .`), `typecheck` (`tsc -b --noEmit`), `test` (`vitest run`), `gen:api` (`openapi-typescript ../contracts/openapi/core-api.yaml -o src/api/schema.d.ts`).
-  - **`createApiClient(middleware: Middleware[]) : Client<paths>`** (openapi-fetch, `baseUrl: ''`).
+  - **`createApiClient(middleware: Middleware[]) : Client<paths>`** (openapi-fetch). `baseUrl` vaut l'origine de la page, pas `''` : le constructeur `Request` de Node (tests) refuse les URL relatives. Le `fetch` global est lu à chaque appel, pour que MSW l'intercepte.
+  - Ajouts à `problem.ts` : `asProblem(body, status)` (corps qui n'est pas un Problem Details → erreur générique `unexpected-response`) et `ApiError` (problème et réponse, pour `Retry-After`).
+  - Versions de l'outillage générées par le template remplacées par celles des Global Constraints : TypeScript 7 et ESLint 10 → 5.9.3 et 9.39.5 ; `eslint-plugin-react-refresh` retiré.
   - **`problem.ts`** : `type Problem = { type: string; title?: string; status: number; detail?: string; correlationId?: string; errors?: { field: string; message: string }[] }` ; `isProblem(x: unknown): x is Problem` ; `problemCode(p: Problem): string` (suffixe de l'URN) ; `fieldErrors(p: Problem): Record<string, string>`.
   - **`can(user: Me | null, permission: string): boolean`**.
-  - **`vite.config.ts`** : proxy `/api` vers `http://localhost:8080` ; Vitest avec `environment: 'jsdom'` et `setupFiles: ['src/test/setup.ts']`.
+  - **`vite.config.ts`** : proxy `/api` vers `http://127.0.0.1:8080` (selon le système, `localhost` peut désigner `::1`), port 5173 fixe (`strictPort` : c'est l'origine autorisée en dev) ; Vitest (`vitest.config.ts`) avec `environment: 'jsdom'` et `setupFiles: ['src/test/setup.ts']`.
   - **`eslint.config.js`** : `typescript-eslint` recommandé, `react-hooks`, et `react/no-danger: 'error'`.
 
 - [ ] **Étape 1 : générer et installer.**
@@ -1247,7 +1250,8 @@ test('isProblem rejects plain JSON', () => expect(isProblem({ foo: 1 })).toBe(fa
 **Fichiers :**
 
 - Créer : `src/auth/session.ts`, `src/auth/refreshCoordinator.ts`, `src/auth/authChannel.ts`, `src/api/authMiddleware.ts`, `src/auth/AuthProvider.tsx`, `src/auth/guards.tsx`, `src/auth/LoginPage.tsx`, `src/auth/ChangePasswordPage.tsx`, `src/auth/ProfilePage.tsx`.
-- Tests : `refreshCoordinator.test.ts`, `authMiddleware.test.ts`, `authChannel.test.ts`, `LoginPage.test.tsx`, `guards.test.tsx`, `ChangePasswordPage.test.tsx`.
+- Créer aussi : `src/api/retryAfter.ts` (`Retry-After` en secondes ou en date HTTP, message d'attente), `src/components/PasswordField.tsx` (`PasswordInput` de Mantine relie son erreur au champ, mais ne pose pas `aria-invalid`).
+- Tests : `refreshCoordinator.test.ts`, `authMiddleware.test.ts`, `authChannel.test.tsx` (rend l'application : `.tsx`), `LoginPage.test.tsx`, `guards.test.tsx`, `ChangePasswordPage.test.tsx`, `AuthProvider.test.tsx` (restauration, déconnexion, session perdue, `password-change-required`).
 
 **Interfaces :**
 
@@ -1263,8 +1267,13 @@ test('isProblem rejects plain JSON', () => expect(isProblem({ foo: 1 })).toBe(fa
     - Sur un 401, il appelle `refreshOnce` puis rejoue la requête une fois.
     - Chemins exclus : `/api/v1/auth/login`, `/api/v1/auth/refresh`, `/api/v1/auth/logout`.
     - Sur un 403 `password-change-required`, il appelle `onPasswordChangeRequired`.
-  - **`AuthProvider`** expose `useAuth(): { user, login(email, password), logout(), changePassword(current, next) }`.
-  - **`guards.tsx`** : `<RequireAuth>`, qui redirige vers `/login`, puis vers `/change-password` si `mustChangePassword` ; `<RequirePermission permission="…">`.
+  - **`AuthProvider`** expose `useAuth(): { status, user, api, login(email, password), logout(), changePassword(current, next) }` et `useApi()`.
+    - Il enveloppe le `RouterProvider` et n'utilise pas le routeur : chaque événement modifie la session, et les gardes en tirent la navigation. Session perdue → `/login`, avec la page quittée dans `state.from` ; `password-change-required` → `markPasswordChangeRequired()`, puis `/change-password`.
+    - `session.ts` vérifie une fois la réponse d'authentification (le contrat déclare facultatifs tous les champs de réponse) et retient la raison de la fin de session : après une déconnexion volontaire, la reconnexion ramène à l'accueil, pas à la page de l'utilisateur précédent.
+    - Le cache TanStack Query est vidé à chaque login, déconnexion ou perte de session.
+    - Les messages de `authChannel.ts` portent l'identifiant de l'onglet émetteur : `BroadcastChannel` remet aussi un message aux autres canaux du même onglet, et l'AuthProvider ne doit pas traiter sa propre déconnexion comme celle d'un autre onglet.
+  - **`guards.tsx`** : `<RequireAuth>`, qui affiche un chargement pendant la restauration de la session, redirige vers `/login`, puis vers `/change-password` si `mustChangePassword` ; `<RequirePermission permission="…">`, qui affiche « Accès refusé ».
+  - **`LoginPage`** : un utilisateur déjà connecté est redirigé ; le compte à rebours du 429 décompte les secondes de `Retry-After`.
 
 - [ ] **Étape 1 : écrire les tests.**
 

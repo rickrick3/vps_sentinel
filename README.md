@@ -34,7 +34,7 @@ Le wrapper Maven (`./mvnw`, ou `.\mvnw.cmd` sous PowerShell) utilise `JAVA_HOME`
 
 ## Environnement de développement
 
-État actuel : PostgreSQL, conteneur de migration et Core API. Le gateway et le frontend arrivent avec la suite de la phase 1.
+État actuel : PostgreSQL, conteneur de migration et Core API dans Compose ; le frontend se lance depuis le poste (voir plus bas). Le gateway et le conteneur du frontend arrivent avec la suite de la phase 1.
 
 ```bash
 cp .env.example .env                 # une fois ; valeurs factices de développement
@@ -58,6 +58,19 @@ cd services/core-api && ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
 Sans `/run/secrets`, l'API lancée depuis le poste en profil `dev` génère des clés JWT et HMAC éphémères, avec un avertissement dans les logs : les jetons émis ne survivent pas à un redémarrage. Dans tout autre profil, un secret absent empêche le démarrage.
 
 Tests du backend (Docker requis : Testcontainers démarre un PostgreSQL 18 réel) : `cd services/core-api && ./mvnw verify`.
+
+Frontend, avec l'API lancée depuis le poste comme ci-dessus :
+
+```bash
+cd frontend
+npm ci                               # une fois, puis à chaque changement de package-lock.json
+npm run dev                          # http://localhost:5173 ; /api passe par le proxy de Vite vers 127.0.0.1:8080
+npm run lint && npm run typecheck && npm test && npm run build    # vérifications complètes
+npm run gen:api                      # après une modification du contrat OpenAPI ; commiter src/api/schema.d.ts
+```
+
+- Le port 5173 est fixe : `http://localhost:5173` est l'origine autorisée en dev (`SENTINEL_ALLOWED_ORIGINS`). S'il est occupé, Vite refuse de démarrer plutôt que de changer de port.
+- La session reste en mémoire dans l'onglet : un rechargement la restaure par le cookie de refresh, et une déconnexion se propage aux autres onglets.
 
 - `migrate` applique les migrations avec `sentinel_owner`, puis s'arrête. `core-api` ne démarre que si `migrate` a réussi, et refuse de démarrer si une migration manque ou a été modifiée : l'API valide les migrations sans jamais les exécuter.
 - PostgreSQL est publié sur `127.0.0.1:5432` uniquement, jamais sur le réseau local. `core-api` n'est pas publié : il sera exposé par le gateway.
