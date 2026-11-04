@@ -1,5 +1,7 @@
 package com.expertiz.sentinel.core.support;
 
+import com.expertiz.sentinel.core.identity.internal.model.RoleCode;
+import com.expertiz.sentinel.core.support.AuthClient.Response;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import org.junit.jupiter.api.BeforeEach;
@@ -7,8 +9,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.web.servlet.client.EntityExchangeResult;
 import org.springframework.test.web.servlet.client.RestTestClient;
 
 /**
@@ -59,6 +65,21 @@ public abstract class ApplicationTestBase {
 
     protected static String bearer(String token) {
         return "Bearer " + token;
+    }
+
+    /** Requête authentifiée, corps JSON facultatif. */
+    protected Response api(String token, HttpMethod method, String uri, Object body) {
+        var request = http.method(method).uri(uri).header(HttpHeaders.AUTHORIZATION, bearer(token));
+        if (body != null) {
+            request.contentType(MediaType.APPLICATION_JSON).body(body);
+        }
+        EntityExchangeResult<String> result = request.exchange().expectBody(String.class).returnResult();
+        return new Response(result.getStatus().value(), result.getResponseHeaders(), result.getResponseBody());
+    }
+
+    /** Jeton d'un nouvel utilisateur actif du rôle donné. */
+    protected String tokenFor(RoleCode role) {
+        return fixtures.accessToken(fixtures.createUser(role));
     }
 
     protected JdbcClient ownerJdbc() {

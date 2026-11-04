@@ -982,7 +982,8 @@ RETURNING failure_count
   - `V5__servers.sql` ;
   - API publique de `infrastructure/` : `AdminStatus.java`, `ServerSummary.java`, `ServerCatalog.java`, `ServerUsageChecker.java` ;
   - dans `infrastructure/internal/` : `Server.java`, `OsFamily.java`, `ServerRepository.java`, `TagRules.java`, `ServerService.java`, `JdbcServerCatalog.java`, `ServersController.java`, `ServerRequest.java`, `ServerResponse.java`, `ServerFacetsResponse.java`, `InfrastructureConstraintMappings.java`.
-- Tests : `TagRulesTest`, `ServersIT`.
+- Créer aussi : `shared/text/IpAddresses.java` (adresse littérale stricte, affichage RFC 5952 comme `host()` de PostgreSQL), `shared/text/IpAddress.java` et son validateur, `shared/web/ValidationGroups.java` (`Create`, `Update`). Les adresses sont stockées en `inet` (`@JdbcTypeCode(SqlTypes.INET)`, `InetAddress`). Les requêtes nettoient leurs chaînes dans le constructeur canonique, avant la validation (Review Focus 1). `adminStatus` vaut `ACTIVE` par défaut en `POST` et est obligatoire en `PUT`. Contraintes `CHECK` pour les règles du spec §10.3 exprimables en SQL.
+- Tests : `TagRulesTest`, `IpAddressesTest`, `ServersIT`, `support/ApplicationTestBase.api(...)`.
 
 **Interfaces :**
 
@@ -1037,7 +1038,8 @@ RETURNING failure_count
 - Créer :
   - `V6__projects.sql` ;
   - dans `projects/internal/` : `Project.java`, `Environment.java`, `EnvironmentKind.java`, `ProjectRepository.java`, `EnvironmentRepository.java`, `ProjectService.java`, `EnvironmentService.java`, `ProjectsController.java`, `EnvironmentsController.java`, `ProjectRequest.java`, `ProjectResponse.java`, `ProjectDetailResponse.java`, `EnvironmentRequest.java`, `EnvironmentResponse.java`, `ProjectsConstraintMappings.java`.
-- Tests : `ProjectsIT`, `EnvironmentsIT`.
+- Verrous : la création d'un environnement verrouille le projet en partage (`FOR SHARE`), la suppression d'un projet le verrouille en exclusif puis chacun de ses environnements ; rien ne s'ajoute à un parent en cours de suppression.
+- Tests : `ProjectsIT`, `EnvironmentsIT`, `projects/ProjectsTestBase`.
 
 **Interfaces :**
 
@@ -1086,7 +1088,9 @@ CREATE UNIQUE INDEX uq_environments_project_name_active ON environments (project
   - `V7__domains_deployments.sql` ;
   - dans `projects/internal/` : `Domain.java`, `Deployment.java`, `DomainService.java`, `DeploymentService.java`, `DomainsController.java`, `DeploymentsController.java`, `ServerDeploymentsController.java`, `ProjectDeploymentUsage.java`.
 - Modifier : `EnvironmentService.softDeleteWithChildren`, `ProjectDetailResponse`, `ProjectsConstraintMappings`.
-- Tests : `DomainsIT`, `DeploymentsIT`.
+- Créer aussi : `DomainRepository`, `DeploymentRepository`, `DomainRequest`, `DeploymentRequest`, `DomainResponse`, `DeploymentResponse`, `HostedEnvironmentResponse`.
+- Verrous : ajout d'un déploiement ou d'un domaine secondaire → environnement en `FOR SHARE` ; domaine principal → environnement en `FOR UPDATE` (deux bascules simultanées laissent exactement un principal) ; suppression d'un environnement → `FOR UPDATE` avant de lire ses enfants. Sans le verrou d'environnement, un déploiement validé après la suppression de l'environnement resterait invisible et bloquerait la suppression du VPS.
+- Tests : `DomainsIT`, `DeploymentsIT` (dont `concurrentAttachAndEnvironmentDeleteNeverOrphans` et `concurrentPrimarySwitchesKeepExactlyOne`, ajoutés au plan).
 
 **Interfaces :**
 
@@ -1094,7 +1098,7 @@ CREATE UNIQUE INDEX uq_environments_project_name_active ON environments (project
 - Produit :
   - `POST /api/v1/environments/{id}/domains`, `DELETE /api/v1/domains/{id}`, `POST /api/v1/environments/{id}/deployments`, `DELETE /api/v1/deployments/{id}`, `GET /api/v1/servers/{id}/deployments`, qui renvoie `List<HostedEnvironmentResponse(UUID deploymentId, UUID projectId, String projectName, UUID environmentId, String environmentName, String role)>`.
   - `ProjectDeploymentUsage implements ServerUsageChecker`.
-  - Beans `ConstraintMapping` : `uq_domains_hostname` vers `DUPLICATE` sur `hostname` ; `uq_deployments_env_server` vers `DEPLOYMENT_EXISTS`.
+  - Beans `ConstraintMapping` : `uq_domains_hostname` vers `DUPLICATE` sur `hostname` ; `uq_deployments_env_server` vers `DEPLOYMENT_EXISTS` sur `serverId`.
 
 - [ ] **Étape 1 : écrire `V7__domains_deployments.sql`** (spec §9.4).
 

@@ -100,6 +100,24 @@ curl -s -X PATCH "$API/users/<id>" -H "Authorization: Bearer <accessToken>" -H '
 curl -s -X POST "$API/users/<id>/reset-password" -H "Authorization: Bearer <accessToken>"
 ```
 
+Inventaire : VPS, projets, environnements, domaines et déploiements (permissions du rôle, voir la matrice du spec §8.12) :
+
+```bash
+curl -s -X POST "$API/servers" -H "Authorization: Bearer <accessToken>" -H 'Content-Type: application/json' \
+     -d '{"name":"VPS-01","hostname":"vps-01.exemple.fr","publicIp":"203.0.113.10","provider":"OVH","tags":["prod","web"]}'
+curl -s -X POST "$API/projects" -H "Authorization: Bearer <accessToken>" -H 'Content-Type: application/json' \
+     -d '{"name":"Demo","repositoryUrl":"https://github.com/exemple/demo"}'
+curl -s -X POST "$API/projects/<projectId>/environments" -H "Authorization: Bearer <accessToken>" -H 'Content-Type: application/json' \
+     -d '{"name":"prod","kind":"PRODUCTION"}'
+curl -s -X POST "$API/environments/<environmentId>/domains" -H "Authorization: Bearer <accessToken>" -H 'Content-Type: application/json' \
+     -d '{"hostname":"demo.exemple.fr","isPrimary":true}'
+curl -s -X POST "$API/environments/<environmentId>/deployments" -H "Authorization: Bearer <accessToken>" -H 'Content-Type: application/json' \
+     -d '{"serverId":"<serverId>","role":"web"}'
+curl -s "$API/servers/<serverId>/deployments" -H "Authorization: Bearer <accessToken>"
+```
+
+`PUT` remplace la ressource entière (champ facultatif absent = vidé) et exige la `version` lue. Un VPS utilisé par un déploiement ne peut être ni supprimé ni passé en `DECOMMISSIONED` (409 `server-in-use`).
+
 Dans la pile Compose, core-api n'est pas publié sur le poste : les mêmes requêtes passent par `docker compose -f docker-compose.yml -f docker-compose.dev.yml exec core-api curl …`, sur `http://localhost:8080`.
 
 ## Sécurité de l'API
