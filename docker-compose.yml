@@ -1,4 +1,4 @@
-# Fichier commun (spec §6.3) : services, réseaux, volumes. Aucun port n'est publié ici.
+# Fichier commun (spec §6.3) : services, réseaux, volumes. Aucun port n'est publié ici, ni configuration Nginx du gateway.
 #   dev  : docker compose -f docker-compose.yml -f docker-compose.dev.yml …
 #   prod : docker compose -f docker-compose.yml -f docker-compose.prod.yml …
 name: vps-sentinel
@@ -67,7 +67,34 @@ services:
       - app
       - data
 
+  # Build Vite servi par Nginx ; joint uniquement par le gateway.
+  frontend:
+    build:
+      context: ./frontend
+    networks:
+      - app
+
+  # Seul service exposé (spec §6.4). Sa configuration Nginx et ses ports viennent de la surcharge dev ou prod.
+  gateway:
+    image: nginx:1.30.6-alpine
+    depends_on:
+      core-api:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+    healthcheck:
+      # Sonde servie sur la boucle locale du conteneur (common.conf), indépendante de l'amont.
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8081/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 5s
+    networks:
+      - public
+      - app
+
 networks:
+  public:
   app:
   data:
 

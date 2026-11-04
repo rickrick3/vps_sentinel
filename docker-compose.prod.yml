@@ -1,0 +1,33 @@
+# Surcharge prod (spec §6.3) : seul le gateway publie des ports, 80 et 443. La phase 1 n'est pas autorisée en
+# production tant que les conditions du spec §15 ne sont pas remplies (docs/deployment/production-prerequisites.md).
+services:
+  postgres:
+    restart: unless-stopped
+
+  core-api:
+    restart: unless-stopped
+
+  frontend:
+    restart: unless-stopped
+
+  gateway:
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./infrastructure/gateway:/etc/nginx/sentinel:ro
+      # fullchain.pem et privkey.pem (Let's Encrypt).
+      - ${SENTINEL_TLS_CERT_DIR:?SENTINEL_TLS_CERT_DIR manquant dans .env}:/etc/nginx/certs:ro
+      # Webroot ACME, écrit par certbot, servi sur /.well-known/acme-challenge/.
+      - ${SENTINEL_ACME_WEBROOT:?SENTINEL_ACME_WEBROOT manquant dans .env}:/var/www/acme:ro
+    command: ["nginx", "-c", "/etc/nginx/sentinel/nginx.prod.conf", "-g", "daemon off;"]
+
+# Secrets de production, hors du dépôt (spec §6.6) ; l'API refuse de démarrer s'il en manque un.
+secrets:
+  jwt_private:
+    file: ${SENTINEL_SECRETS_DIR:?SENTINEL_SECRETS_DIR manquant dans .env}/jwt-private.pem
+  jwt_public:
+    file: ${SENTINEL_SECRETS_DIR:?SENTINEL_SECRETS_DIR manquant dans .env}/jwt-public.pem
+  hmac_key:
+    file: ${SENTINEL_SECRETS_DIR:?SENTINEL_SECRETS_DIR manquant dans .env}/hmac.key

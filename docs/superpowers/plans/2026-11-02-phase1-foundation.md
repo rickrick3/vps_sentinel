@@ -1305,7 +1305,14 @@ test('maps 400 currentPassword error to the field', async () => {});
 **Fichiers :**
 
 - Créer : `src/components/PaginatedTable.tsx`, `src/components/useListParams.ts`, `src/components/ConfirmDelete.tsx`, `src/api/applyProblem.ts`, et dans `src/features/servers/` : `api.ts`, `ServersListPage.tsx`, `ServerDetailPage.tsx`, `ServerFormPage.tsx`.
+- Créer aussi : `src/api/unwrap.ts` (résultat openapi-fetch → données ou `ApiError`, pour TanStack Query), `src/components/QueryError.tsx`, `src/components/format.ts`, `src/features/servers/labels.ts`, `src/test/deferred.ts`.
 - Tests : `src/features/servers/servers.test.tsx`.
+- Mise en œuvre :
+  - `useListParams` renvoie `{ params: { page, size, sort, filters }, setParams(update) }`. Les valeurs par défaut sont omises de l'URL ; un changement de filtre, de tri ou de taille ramène à la première page.
+  - `applyProblem` a un pendant, `applyError(error, form?)`, qui couvre aussi les erreurs réseau.
+  - Le corps complet d'un VPS (`ServerPayload`) porte `null` pour un champ vide ; le contrat généré ne déclarant pas `null`, il est converti à l'envoi.
+  - Les bibliothèques (React et Mantine) sont dans leurs propres fichiers de build (`codeSplitting.groups` de Rolldown) : plus d'avertissement de taille au build.
+  - Outillage de test : `<Notifications />` dans les tests ; réponses MSW par défaut pour les listes du tableau de bord ; `document.fonts` simulé (Textarea de Mantine) ; attente de Testing Library à 10 s, tests à 30 s, quatre workers au plus. Les réponses « en attente » sont retenues par une promesse, pas par un délai.
 
 **Interfaces :**
 
@@ -1343,7 +1350,12 @@ test('detail lists hosted environments', async () => {});
 **Fichiers :**
 
 - Créer, dans `src/features/projects/` : `api.ts`, `ProjectsListPage.tsx`, `ProjectDetailPage.tsx`, `EnvironmentModal.tsx`, `DomainModal.tsx`, `DeploymentModal.tsx`.
+- Créer aussi : `ProjectModal.tsx` (création et modification d'un projet), `labels.ts`.
 - Tests : `src/features/projects/projects.test.tsx`.
+- Mise en œuvre :
+  - Toute mutation recharge les données des projets (nombre d'environnements de la liste compris) ; rattacher ou détacher un VPS recharge aussi les fiches VPS.
+  - `DeploymentModal` propose les 100 premiers VPS par nom, sans les VPS décommissionnés ; `deployment-exists` s'affiche sur le champ VPS.
+  - Le lien du dépôt n'est rendu que pour une URL http(s), avec `rel="noopener noreferrer"`.
 
 **Interfaces :**
 
@@ -1371,7 +1383,13 @@ test('submit is disabled while saving in modals', async () => {});
 **Fichiers :**
 
 - Créer : dans `src/features/users/` : `api.ts`, `UsersPage.tsx`, `UserFormModal.tsx`, `TemporaryPasswordModal.tsx` ; dans `src/features/audit/` : `api.ts`, `AuditPage.tsx` ; `src/features/dashboard/DashboardPage.tsx`.
+- Créer aussi : `src/features/users/labels.ts`, `src/features/audit/labels.ts`.
 - Tests : `users.test.tsx`, `audit.test.tsx`, `dashboard.test.tsx`.
+- Mise en œuvre :
+  - `useResetPassword()` reçoit l'id à l'appel (`mutate(id)`).
+  - Les mutations qui renvoient un mot de passe temporaire ont `gcTime: 0` : `reset()` seul ne retire pas le résultat du cache des mutations, qui le garderait 5 minutes.
+  - Son propre compte : pas de suppression, rôle et statut non modifiables (spec §8.8).
+  - Journal : dates saisies en heure locale, envoyées en instants ISO-8601 UTC ; détails affichés comme texte JSON.
 
 **Interfaces :**
 
@@ -1405,6 +1423,12 @@ test('dashboard never calls audit-logs without audit:read', async () => { /* nom
 
 - Créer : `frontend/Dockerfile`, `frontend/nginx/spa.conf`, `infrastructure/gateway/nginx.dev.conf`, `infrastructure/gateway/nginx.prod.conf`, `infrastructure/gateway/security-headers.conf`, `infrastructure/gateway/proxy-headers.conf`, `docker-compose.prod.yml`, `scripts/check-compose-ports.sh`.
 - Modifier : `docker-compose.yml` (ajout de `frontend` et `gateway`), `docker-compose.dev.yml` (gateway).
+- Créer aussi : `infrastructure/gateway/common.conf` (réglages http communs) et `routes.conf` (routes communes au serveur HTTP de dev et au serveur HTTPS de prod), pour que les deux configurations ne divergent pas.
+- Mise en œuvre :
+  - **Healthchecks** : celui du gateway interroge une sonde sur la boucle locale du conteneur (`127.0.0.1:8081`, jamais publié) ; celui du frontend interroge Nginx.
+  - **Amont** : `core-api` et `frontend` sont résolus à l'exécution par le DNS de Docker (`resolve`), si bien qu'un conteneur redémarré reste joignable.
+  - **En-têtes de réponse** : HSTS est émis en HTTPS seulement, par `map $scheme`. Les en-têtes de sécurité renvoyés par l'amont sont retirés au profit de ceux du gateway, sans doublon.
+  - **Surcharge prod** : politiques `restart: unless-stopped`.
 
 **Interfaces :**
 
@@ -1473,6 +1497,10 @@ test('dashboard never calls audit-logs without audit:read', async () => { /* nom
 **Fichiers :**
 
 - Créer : `tests/e2e/package.json`, `tests/e2e/playwright.config.ts`, `tests/e2e/helpers/api.ts`, `tests/e2e/journeys.spec.ts`, `tests/e2e/gateway.spec.ts`, `scripts/e2e.sh`.
+- Créer aussi : `tests/e2e/docker-compose.e2e.yml`.
+  - `e2e.sh` lance la pile sous le projet Compose `vps-sentinel-e2e`, avec cette surcharge qui ne publie pas PostgreSQL.
+  - Le `down -v` ne supprime donc jamais la pile ni la base de développement, et les E2E tournent à côté d'une base de dev démarrée.
+  - Seul le port 8088 doit être libre.
 
 **Interfaces :**
 
@@ -1517,6 +1545,7 @@ test('rate limit answers 429 problem json', async ({ request }) => {
 **Fichiers :**
 
 - Créer : `.github/workflows/ci.yml`, `docs/deployment/production-prerequisites.md`.
+- Versions des actions : `checkout@v7`, `setup-node@v7`, `setup-java@v6`, `upload-artifact@v7` (dernières versions majeures au 2026-11-04). En cas d'échec des E2E, le rapport Playwright est publié comme artefact.
 - Modifier : `README.md`.
 
 **Interfaces :**

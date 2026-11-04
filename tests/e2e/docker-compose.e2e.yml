@@ -1,0 +1,6 @@
+# Surcharge des tests E2E, ajoutée à la pile dev sous le projet « vps-sentinel-e2e » (scripts/e2e.sh) : volumes et
+# conteneurs distincts de la pile de développement, que « down -v » ne touche donc jamais. PostgreSQL n'y est pas
+# publié : la pile E2E tourne à côté d'une base de développement démarrée. Seul le gateway (8088) doit être libre.
+services:
+  postgres:
+    ports: !reset []

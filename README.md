@@ -2,7 +2,7 @@
 
 Plateforme interne de supervision d'infrastructure : inventaire des VPS et des projets, détection des incidents et notifications.
 
-> **La phase 1 n'est pas autorisée en production.** Les conditions préalables (sauvegardes et restauration testées, TLS, secrets de production, watchdog externe…) sont listées au §15 de la [spécification de la phase 1](docs/superpowers/specs/2026-11-02-phase1-foundation-design.md).
+> **La phase 1 n'est pas autorisée en production.** Les conditions préalables (sauvegardes et restauration testées, TLS, secrets de production, watchdog externe…) sont listées au §15 de la [spécification de la phase 1](docs/superpowers/specs/2026-11-02-phase1-foundation-design.md) et suivies dans [les conditions préalables à la mise en production](docs/deployment/production-prerequisites.md).
 
 ## Documentation
 
@@ -34,13 +34,13 @@ Le wrapper Maven (`./mvnw`, ou `.\mvnw.cmd` sous PowerShell) utilise `JAVA_HOME`
 
 ## Environnement de développement
 
-État actuel : PostgreSQL, conteneur de migration et Core API dans Compose ; le frontend se lance depuis le poste (voir plus bas). Le gateway et le conteneur du frontend arrivent avec la suite de la phase 1.
+La pile complète (PostgreSQL, migrations, Core API, frontend et gateway) sert l'application sur <http://localhost:8088>. Pour développer, l'API et le frontend se lancent aussi depuis le poste (voir plus bas).
 
 ```bash
 cp .env.example .env                 # une fois ; valeurs factices de développement
 bash scripts/gen-dev-secrets.sh      # une fois ; clés dans infrastructure/secrets/dev/ (ignoré par git)
 
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build --wait    # pile complète
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build --wait    # pile complète : http://localhost:8088
 docker compose -f docker-compose.yml -f docker-compose.dev.yml ps -a                   # état (migrate : Exited (0))
 docker compose -f docker-compose.yml -f docker-compose.dev.yml down                    # arrêt, données conservées
 docker compose -f docker-compose.yml -f docker-compose.dev.yml down -v                 # remise à zéro (base vierge)
@@ -73,13 +73,15 @@ npm run gen:api                      # après une modification du contrat OpenAP
 - La session reste en mémoire dans l'onglet : un rechargement la restaure par le cookie de refresh, et une déconnexion se propage aux autres onglets.
 
 - `migrate` applique les migrations avec `sentinel_owner`, puis s'arrête. `core-api` ne démarre que si `migrate` a réussi, et refuse de démarrer si une migration manque ou a été modifiée : l'API valide les migrations sans jamais les exécuter.
-- PostgreSQL est publié sur `127.0.0.1:5432` uniquement, jamais sur le réseau local. `core-api` n'est pas publié : il sera exposé par le gateway.
+- Seuls le gateway (`127.0.0.1:8088`) et PostgreSQL (`127.0.0.1:5432`) sont publiés, sur la boucle locale uniquement, jamais sur le réseau local. `core-api` et `frontend` ne sont joignables que par le gateway.
 - `infrastructure/postgres/init/01-roles.sh` ne s'exécute que sur un volume vide. Après une modification de ce script ou des mots de passe de `.env`, repartir d'une base vierge avec `down -v`.
 - Rôles PostgreSQL : `postgres` (initialisation uniquement), `sentinel_owner` (migrations), `sentinel_app` (API, sans aucun droit de création).
 
-### Premier accès à l'API (avant le frontend)
+### Premier accès
 
-Au premier démarrage, core-api crée le SUPER_ADMIN décrit par `SENTINEL_BOOTSTRAP_ADMIN_*` (`.env`). Son mot de passe doit être changé à la première connexion : d'ici là, son jeton n'ouvre que `GET /api/v1/me`, le changement de mot de passe et le logout. Retirez ensuite ces variables de `.env`. Exemple avec l'API lancée depuis le poste (voir plus haut) :
+Au premier démarrage, core-api crée le SUPER_ADMIN décrit par `SENTINEL_BOOTSTRAP_ADMIN_*` (`.env`). Son mot de passe doit être changé à la première connexion : d'ici là, son jeton n'ouvre que `GET /api/v1/me`, le changement de mot de passe et le logout. **Retirez ensuite ces variables de `.env`.**
+
+Par l'interface : <http://localhost:8088> (pile complète) ou <http://localhost:5173> (frontend du poste), connexion avec ces identifiants, puis changement de mot de passe imposé. Par l'API, avec l'API lancée depuis le poste (voir plus haut) :
 
 ```bash
 API=http://127.0.0.1:8080/api/v1
@@ -140,7 +142,38 @@ curl -s "$API/audit-logs?targetType=SERVER&from=2026-11-01T00:00:00Z&to=2026-11-
 
 Contrat OpenAPI : `contracts/openapi/core-api.yaml`, d'où le frontend génère ses types. Le build échoue s'il ne correspond plus à l'API ; après une modification d'endpoint, le régénérer avec `bash scripts/export-openapi.sh` (Docker requis), puis relire le diff.
 
-Dans la pile Compose, core-api n'est pas publié sur le poste : les mêmes requêtes passent par `docker compose -f docker-compose.yml -f docker-compose.dev.yml exec core-api curl …`, sur `http://localhost:8080`.
+Avec la pile complète, les mêmes requêtes passent par le gateway : `API=http://localhost:8088/api/v1` et `ORIGIN=http://localhost:8088`.
+
+## Gateway
+
+Configuration : `infrastructure/gateway/` (spec §6.4). `nginx.dev.conf` sert HTTP sur `127.0.0.1:8088` ; `nginx.prod.conf` termine TLS sur 443, et son port 80 ne sert que le défi ACME et la redirection vers HTTPS.
+
+- Routes : `/api/` et `/actuator/health` vers core-api, tout le reste vers le frontend. Ni `/v3/api-docs` ni les autres endpoints Actuator ne sont routés vers l'API.
+- En-têtes de sécurité sur chaque réponse, erreurs comprises : `Content-Security-Policy` (scripts limités à `'self'`), `X-Content-Type-Options`, `Referrer-Policy`, et `Strict-Transport-Security` en HTTPS.
+- IP du client : `X-Forwarded-For` et `X-Real-IP` sont écrasés par l'adresse vue par le gateway, jamais complétés ; `X-Request-Id` est toujours généré par le gateway.
+- Limitation par IP : login 10 par minute (rafale de 5), autres `/api/v1/auth/*` 30 par minute (rafale de 10) ; au-delà, 429 en `application/problem+json` (`urn:sentinel:problem:rate-limited`).
+
+## Tests et intégration continue
+
+```bash
+bash scripts/check-repo.sh                                         # hygiène du dépôt
+bash scripts/check-compose-ports.sh                                # ports publiés en dev et en prod
+(cd services/core-api && ./mvnw -B verify)                         # backend (Docker requis)
+(cd frontend && npm run lint && npm run typecheck && npm test && npm run build)
+bash scripts/e2e.sh                                                # E2E : pile complète vierge + Playwright
+```
+
+- `scripts/e2e.sh` démarre une pile vierge sous le projet Compose `vps-sentinel-e2e`, avec ses propres conteneurs et volumes : la pile et la base de développement ne sont jamais touchées. Seul le port 8088 doit être libre. La pile E2E est supprimée à la fin, que les tests réussissent ou non.
+- Premier lancement : le script installe les dépendances de `tests/e2e` et le Chromium de Playwright.
+- `.github/workflows/ci.yml` exécute ces vérifications sur chaque push et pull request ; les E2E ne démarrent qu'après la réussite des trois autres jobs.
+
+## Production
+
+**Non autorisée en phase 1** : voir [les conditions préalables](docs/deployment/production-prerequisites.md). Pour mémoire, la combinaison prod publie seulement 80 et 443, lit les secrets dans `${SENTINEL_SECRETS_DIR}`, les certificats dans `${SENTINEL_TLS_CERT_DIR}` et le webroot ACME dans `${SENTINEL_ACME_WEBROOT}` :
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build --wait
+```
 
 ## Sécurité de l'API
 
