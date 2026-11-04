@@ -3,6 +3,7 @@ package com.expertiz.sentinel.core.identity.internal.security;
 import com.expertiz.sentinel.core.shared.problem.ProblemWriter;
 import jakarta.servlet.DispatcherType;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -16,6 +17,7 @@ import org.springframework.security.oauth2.server.resource.web.BearerTokenResolv
 import org.springframework.security.oauth2.server.resource.web.DefaultBearerTokenResolver;
 import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.web.servlet.handler.MappedInterceptor;
 
 /**
  * Spring Security (spec §8.11) : sans état, refus par défaut, authentification par Bearer uniquement.
@@ -27,13 +29,20 @@ import org.springframework.security.web.SecurityFilterChain;
  *   <li>Aucune session HTTP, aucun CSRF par jeton ni CORS (spec §8.9), aucun formulaire de login, Basic ou logout de
  *       Spring Security : pas de route implicite.
  *   <li>Jeton lu dans l'en-tête {@code Authorization} seulement, jamais dans l'URL ni le corps.
- *   <li>Ordre : contrôle d'origine, Bearer, changement de mot de passe imposé, autorisation.
+ *   <li>Ordre : contrôle d'origine, Bearer, changement de mot de passe imposé, puis autorisation, avant toute lecture de
+ *       la requête ({@link AuthorizeBeforeBindingInterceptor}).
  * </ul>
  */
 @Configuration(proxyBeanMethods = false)
 @EnableMethodSecurity
 @EnableConfigurationProperties(SentinelSecurityProperties.class)
 class SecurityConfig {
+
+    /** Détecté par chaque {@code HandlerMapping} de Spring MVC, sans restriction de chemin. */
+    @Bean
+    MappedInterceptor authorizeBeforeBinding(ApplicationContext context) {
+        return new MappedInterceptor(null, new AuthorizeBeforeBindingInterceptor(context));
+    }
 
     @Bean
     SecurityFilterChain apiSecurity(HttpSecurity http, ProblemWriter problems, SentinelSecurityProperties properties) {

@@ -68,10 +68,20 @@ public class Fixtures {
         return "user-" + SEQUENCE.incrementAndGet() + "-" + Long.toHexString(System.nanoTime()) + "@sentinel.test";
     }
 
+    /** Nom unique par appel ({@code préfixe-n-hex}), conforme aux motifs de noms du spec §10.3. */
+    public static String uniqueName(String prefix) {
+        return prefix + "-" + SEQUENCE.incrementAndGet() + "-" + Long.toHexString(System.nanoTime());
+    }
+
     /** Adresse {@code 10.x.y.z} unique par appel : les compteurs de limitation ne se mélangent pas entre tests. */
     public static String uniqueIp() {
         int n = SEQUENCE.incrementAndGet();
         return "10." + ((n >> 16) & 0xff) + "." + ((n >> 8) & 0xff) + "." + (n & 0xff);
+    }
+
+    /** Adresse IPv6 de documentation ({@code 2001:db8::/32}) unique par appel, sous forme compacte. */
+    public static String uniqueIpv6() {
+        return "2001:db8::" + Integer.toHexString(SEQUENCE.incrementAndGet());
     }
 
     /** Valeur au format d'une empreinte HMAC tronquée (32 caractères hexadécimaux), unique par appel. */

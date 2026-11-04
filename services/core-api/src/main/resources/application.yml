@@ -29,6 +29,12 @@ springdoc:
   api-docs:
     # Actif en dev et en test pour le contrat OpenAPI, désactivé en prod (spec §8.11).
     enabled: true
+  # Le contrat ne décrit que l'API : ni le rendu des erreurs, ni les endpoints propres aux tests.
+  paths-to-match: /api/**
+  # Clés triées : le contrat commité ne dépend pas de l'ordre de déclaration des contrôleurs ni des champs.
+  writer-with-order-by-keys: true
+  # Les réponses de succès sont du JSON (les erreurs, du Problem Details : voir OpenApiConfig).
+  default-produces-media-type: application/json
 
 management:
   endpoints:

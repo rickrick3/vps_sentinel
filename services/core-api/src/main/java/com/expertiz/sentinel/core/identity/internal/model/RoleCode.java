@@ -6,5 +6,11 @@ public enum RoleCode {
     INFRA_ADMIN,
     DEVOPS,
     DEVELOPER,
-    VIEWER
+    VIEWER;
+
+    /**
+     * Les codes valides, pour {@code @Pattern} sur une requête : une valeur inconnue est une erreur de champ. Ancré, car
+     * le contrat OpenAPI reprend ce motif et un motif JSON Schema n'est pas implicitement ancré.
+     */
+    public static final String PATTERN = "^(SUPER_ADMIN|INFRA_ADMIN|DEVOPS|DEVELOPER|VIEWER)$";
 }

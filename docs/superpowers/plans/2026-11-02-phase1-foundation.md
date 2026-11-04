@@ -26,7 +26,7 @@
 
 **Versions frontend :** Node 24 ; TypeScript `5.9.3` ; Vite `8.3.5` ; `@vitejs/plugin-react` `6.2.1` ; React et React DOM `19.3.1` ; `@mantine/*` `9.7.4` ; `@tanstack/react-query` `5.105.2` ; `react-router` `8.5.1` ; `openapi-typescript` `7.13.0` ; `openapi-fetch` `0.17.0`.
 
-**Outillage frontend :** Vitest `5.0.5` ; jsdom `30.1.3` ; MSW `3.0.3` ; `@testing-library/react` `16.3.3`, `user-event` `14.6.8`, `jest-dom` `7.0.1` ; ESLint `9.39.5` ; `typescript-eslint` `8.72.1` ; `eslint-plugin-react` `7.37.5` ; `eslint-plugin-react-hooks` `7.1.1` ; `@playwright/test` `1.64.1`.
+**Outillage frontend :** Vitest `5.0.5` ; jsdom `29.1.1` (jsdom 30 exige Node ≥ 24.15 ; poste en Node 24.11, choix de l'utilisateur du 2026-11-04) ; MSW `3.0.3` ; `@testing-library/react` `16.3.3`, `user-event` `14.6.8`, `jest-dom` `7.0.1` ; ESLint `9.39.5` ; `typescript-eslint` `8.72.1` ; `eslint-plugin-react` `7.37.5` ; `eslint-plugin-react-hooks` `7.1.1` ; `@playwright/test` `1.64.1`.
 
 **Images Docker :** `postgres:18`, `flyway/flyway:12.4.0-alpine`, `eclipse-temurin:25-jdk`, `eclipse-temurin:25-jre`, `node:24-alpine`, `nginx:1.30.6-alpine`.
 
@@ -160,7 +160,7 @@ Approuvés le 2026-11-02. La phase 0 (dépôt, poste, PostgreSQL de dev) est ter
   - Méthodes utilitaires `ownerJdbc()` (connexion `sentinel_owner`, pour les assertions) et `appJdbc()` (connexion `sentinel_app`, celle de l'application).
 - **Pas de nettoyage global** : `audit_logs` ne peut pas être vidée. Chaque test crée des données uniques (email, nom, IP) via `Fixtures`, et ses assertions sur l'audit filtrent par `target_id` ou `correlation_id`.
 - **IP client par test** : chaque test envoie `X-Forwarded-For: <Fixtures.uniqueIp()>`. Depuis 127.0.0.1, proxy de confiance par défaut, cela reproduit le gateway, et les compteurs de limitation ne se mélangent pas entre tests.
-- **Tests qui supposent un état global** (bootstrap, dernier SUPER_ADMIN) : ils héritent d'`IsolatedDatabaseIT`, qui démarre une base neuve pour la classe.
+- **Tests qui supposent un état global** (bootstrap, dernier SUPER_ADMIN) : ils héritent d'`IsolatedDatabaseIT`, qui démarre une base neuve pour la classe. Chaque sous-classe déclare sa base (`static final SentinelPostgres DATABASE = newDatabase()`) et son `@DynamicPropertySource`, donc aussi son propre contexte. Base commune : `ApplicationTestBase` (client HTTP, `AuthClient`, horloge, `Fixtures`).
 - Surefire inclut `**/*Test.java` et `**/*IT.java`.
 
 ---
@@ -738,10 +738,11 @@ class UntrustedProxyClientIpIT { @Test void forwardedForIgnored() { /* même req
 **Fichiers :**
 
 - Créer :
-  - dans `identity/internal/session/` : `LoginThrottleRepository.java`, `LoginThrottleService.java`, `RefreshTokenRepository.java` (insertion), `RefreshTokenService.java` (`startFamily`), `NewRefreshToken.java`, `RefreshCookies.java`, `AuthTokens.java`, `LoginService.java`, `LoginOutcome.java` ;
+  - dans `identity/internal/session/` : `LoginThrottleRepository.java`, `LoginThrottleService.java`, `RefreshTokenRepository.java` (insertion), `RefreshTokenService.java` (`startFamily`), `NewRefreshToken.java`, `RefreshCookies.java`, `AuthTokens.java`, `LoginService.java`, `LoginOutcome.java`, `ThrottleScope.java` (seuils 5 et 20), `SessionTokens.java` (access token et profil communs au login, au refresh et au changement de mot de passe), `SessionAudit.java` ;
   - `identity/web/AuthController.java` (login), `identity/web/LoginRequest.java`, `identity/web/AuthResponse.java`.
 - Modifier : `UserRepository` (ajout de `touchLastLogin`).
-- Tests : `ThrottleDelayTest`, `LoginIT`, `LoginThrottleIT`, `LoginAuditIT`.
+- Modifier : `shared/problem/ApiException` et `ProblemDetailsAdvice` (en-têtes optionnels : `Retry-After`, effacement du cookie).
+- Tests : `ThrottleDelayTest`, `RefreshCookiesTest`, `LoginIT`, `LoginThrottleIT`, `LoginAuditIT`, `support/AuthClient.java`.
 
 **Interfaces :**
 
@@ -749,8 +750,8 @@ class UntrustedProxyClientIpIT { @Test void forwardedForIgnored() { /* même req
   - **`LoginThrottleService`** :
     - `static Duration delayFor(int failures, int threshold)` ;
     - `Optional<Duration> blockedFor(String accountFp, String ipFp)` ;
-    - `ThrottleResult recordFailure(String accountFp, String ipFp)`, avec `record ThrottleResult(int accountIpFailures, int ipFailures, Optional<Duration> startedBlock, String blockedScope)` ;
-    - `void resetAccountIp(String accountFp, String ipFp)` ; `int clearAccount(String accountFp)`.
+    - `List<StartedBlock> recordFailure(String accountFp, String ipFp)`, avec `record StartedBlock(ThrottleScope scope, int failureCount, Duration duration)` : un même échec peut ouvrir les blocages des deux portées, chacun audité ; `accountIpBlockedFor` et `recordAccountIpFailure` pour le changement de mot de passe ;
+    - `void resetAccountIp(String accountFp, String ipFp)`. `int clearAccount(String accountFp)` arrive avec son premier consommateur, la réinitialisation par un admin (tâche 13).
   - **`record NewRefreshToken(String rawValue, UUID id, UUID familyId, Instant expiresAt, Instant sessionStartedAt)`** ; `RefreshTokenService.startFamily(UUID userId, String ip, String userAgent) : NewRefreshToken`.
   - **`RefreshCookies`** :
     - `ResponseCookie issue(NewRefreshToken t)` : `Max-Age = min(24 h, sessionStartedAt + 7 j − now)` en secondes ;
@@ -789,7 +790,7 @@ class UntrustedProxyClientIpIT { @Test void forwardedForIgnored() { /* même req
 @Test void ipScopeBlocksAfter20Failures() { /* 20 identifiants différents depuis la même IP → 21e tentative → 429 */ }
 @Test void blockedAttemptsNeitherVerifyNorExtend() { /* bon mot de passe pendant le blocage → 429 ; à la fin du blocage → 200 */ }
 @Test void successResetsAccountIpNotIpScope() { /* ownerJdbc : ligne ACCOUNT_IP supprimée ou à 0 ; ligne IP inchangée */ }
-@Test void parallelFailuresCountedExactly() { /* 10 threads (CountDownLatch) → failure_count == 10 */ }
+@Test void parallelFailuresCountedExactly() { /* 10 threads (CountDownLatch), 10 identifiants distincts depuis une même IP → failure_count de la portée IP == 10 (même compte et même IP serait non déterministe : les threads arrivés après le 5e échec reçoivent 429) */ }
 @Test void counterResetsAfterOneHour() { /* 3 échecs, advance(61 min), 1 échec → failure_count == 1 */ }
 // LoginAuditIT
 @ParameterizedTest @ValueSource(strings = {"S3cr3t-Passw0rd!", "p@ssw0rd-1234567"})
@@ -832,7 +833,8 @@ RETURNING failure_count
 
 - Modifier : `RefreshTokenRepository`, `RefreshTokenService`, `AuthController` (refresh, logout).
 - Créer : `identity/internal/session/RefreshOutcome.java`, `identity/internal/session/SessionCleanupJob.java`, `identity/internal/session/RevokedReason.java`.
-- Tests : `RefreshIT`, `LogoutIT`, `SessionCleanupJobIT`.
+- Créer aussi : `identity/internal/session/SchedulingConfig.java` (`@EnableScheduling`). Un refresh refusé efface le cookie (401 « Session expirée. Reconnectez-vous. »).
+- Tests : `RefreshIT`, `LogoutIT`, `SessionCleanupJobIT` (purge et enregistrement auprès du planificateur).
 
 **Interfaces :**
 
@@ -883,7 +885,8 @@ RETURNING failure_count
 
 - Créer : `identity/internal/session/ChangePasswordService.java`, `identity/internal/session/ChangePasswordOutcome.java`, `identity/internal/admin/SuperAdminLock.java`, `identity/internal/bootstrap/BootstrapAdminRunner.java`, `identity/web/ChangePasswordRequest.java`.
 - Modifier : `AuthController` (`POST /api/v1/auth/change-password`).
-- Tests : `ChangePasswordIT`, `BootstrapAdminIT` (hérite d'`IsolatedDatabaseIT`).
+- Créer aussi : `shared/text/EmailAddress.java` (forme du spec §10.3) ; le bootstrap refuse aussi un email invalide et un nom de plus de 120 caractères, avec un log d'erreur.
+- Tests : `ChangePasswordIT`, `BootstrapAdminIT` (hérite d'`IsolatedDatabaseIT` ; deux bootstraps concurrents ne créent qu'un admin), `EmailAddressTest`.
 
 **Interfaces :**
 
@@ -891,7 +894,7 @@ RETURNING failure_count
   - **`SuperAdminLock.acquire()`** : `SELECT pg_advisory_xact_lock(hashtext('sentinel.super_admin'))`. Il exige une transaction en cours (`MANDATORY`).
   - **`sealed interface ChangePasswordOutcome`** : `Changed(AuthTokens tokens)`, `WrongCurrentPassword()`, `Throttled(Duration retryAfter)`.
   - **`ChangePasswordService.change(UUID userId, String current, String next, String ip, String ua) : ChangePasswordOutcome`**.
-  - **`record ChangePasswordRequest(@NotBlank String currentPassword, @NotBlank String newPassword)`**.
+  - **`record ChangePasswordRequest(@NotBlank @Size(max=1024) String currentPassword, @NotBlank @Size(max=1024) String newPassword)`** : bornes avant tout hachage, comme au login.
   - **`BootstrapAdminRunner implements ApplicationRunner`** : sa méthode testable est `void bootstrap(String email, String password, String name)`.
 
 - [ ] **Étape 1 : écrire les tests.**
@@ -925,14 +928,16 @@ RETURNING failure_count
 - Créer :
   - dans `identity/internal/admin/` : `UserAdminService.java`, `PatchUserCommand.java`, `UserQueryService.java`, `IdentityConstraintMappings.java` ;
   - dans `identity/web/` : `UsersController.java`, `UserResponse.java`, `CreateUserRequest.java`, `CreatedUserResponse.java`, `TemporaryPasswordResponse.java`.
-- Tests : `UsersIT`, `LastSuperAdminIT` (hérite d'`IsolatedDatabaseIT`), `PatchUserCommandTest`.
+- Créer aussi : `shared/text/EmailFormat.java` et son validateur (forme normalisée, une seule passe de validation avec les autres champs) ; `RoleCode.PATTERN` pour `@Pattern` ; `identity/web/PatchUserRequest.java` (forme documentée du `PATCH`).
+- Modifier : `User` (`rename`, `changeRole`, `disable`, `enable`, `delete`, `resetPassword`), `UserRepository` (`JpaSpecificationExecutor`, `countByRoleCodeAndStatusAndIdNot`), `LoginThrottleService.clearAccount`, `SentinelSecurityProperties.temporaryPasswordTtl`.
+- Tests : `UsersIT`, `LastSuperAdminIT` (hérite d'`IsolatedDatabaseIT`), `PatchUserCommandTest`, `RoleCodeTest`, `EmailFormatValidatorTest`.
 
 **Interfaces :**
 
 - Consomme : `SuperAdminLock.acquire()`, `RefreshTokenService.revokeAllForUser`, `LoginThrottleService.clearAccount`, `Fingerprints.identifier`, `TemporaryPasswordGenerator`, `PasswordPolicy`.
 - Produit :
   - **Endpoints** du spec §10.1 pour `/api/v1/users` (`@PreAuthorize` avec `Permissions.USER_READ` ou `USER_MANAGE`). `SortSpec` : `fullName`, `email`, `createdAt`, `lastLoginAt` ; tri par défaut `fullName,asc`.
-  - **`PatchUserCommand.parse(ObjectNode body) : PatchUserCommand`** (Jackson 3, `tools.jackson.databind.node.ObjectNode`). Elle distingue un champ absent (inchangé) d'un champ `null` explicite (400 sur ce champ). Champ inconnu → 400. `version` est obligatoire.
+  - **`PatchUserCommand.parse(Map<String, Object> body) : PatchUserCommand`** (l'objet JSON désérialisé, clés à valeur `null` comprises ; un `ObjectNode` de Jackson 3 en paramètre fait échouer l'analyse de springdoc 3.2). Le corps est documenté par `PatchUserRequest` (`@Operation(requestBody = …)`). Elle distingue un champ absent (inchangé) d'un champ `null` explicite (400 sur ce champ). Champ inconnu → 400. `version` est obligatoire.
   - **`record CreatedUserResponse(UserResponse user, String temporaryPassword, Instant temporaryPasswordExpiresAt)`** ; **`record TemporaryPasswordResponse(String temporaryPassword, Instant temporaryPasswordExpiresAt)`**.
   - **Bean `ConstraintMapping("uq_users_email_active", DUPLICATE, "email")`**.
 
@@ -963,7 +968,8 @@ RETURNING failure_count
 
 - [ ] **Étape 2 : lancer les tests.** Attendu : échec.
 - [ ] **Étape 3 : implémenter.**
-  - Toute opération qui réduit le nombre de SUPER_ADMIN appelle `SuperAdminLock.acquire()`, puis compte les SUPER_ADMIN actifs autres que la cible.
+  - Toute opération qui réduit le nombre de SUPER_ADMIN appelle `SuperAdminLock.acquire()`, puis compte les SUPER_ADMIN actifs autres que la cible. Le verrou est pris avant de lire la cible : pour un `PATCH` qui porte `role` ou `status`, et pour toute suppression.
+  - Audit d'un `PATCH` : un événement par nature de changement, avec ses seuls champs modifiés (`USER_UPDATED` pour `fullName`, `USER_ROLE_CHANGED`, `USER_DISABLED` ou `USER_ENABLED`) ; une valeur identique n'est pas un changement. Révocation `USER_DISABLED` si le compte est désactivé, sinon `ROLE_CHANGED` si le rôle change.
   - La réinitialisation calcule `Fingerprints.identifier(user.email)` pour appeler `clearAccount`.
 - [ ] **Étape 4 : relancer.** Attendu : PASS.
 - [ ] **Étape 5 : commit.** `git commit -m "feat(identity): user administration with guardrails"`
@@ -976,7 +982,8 @@ RETURNING failure_count
   - `V5__servers.sql` ;
   - API publique de `infrastructure/` : `AdminStatus.java`, `ServerSummary.java`, `ServerCatalog.java`, `ServerUsageChecker.java` ;
   - dans `infrastructure/internal/` : `Server.java`, `OsFamily.java`, `ServerRepository.java`, `TagRules.java`, `ServerService.java`, `JdbcServerCatalog.java`, `ServersController.java`, `ServerRequest.java`, `ServerResponse.java`, `ServerFacetsResponse.java`, `InfrastructureConstraintMappings.java`.
-- Tests : `TagRulesTest`, `ServersIT`.
+- Créer aussi : `shared/text/IpAddresses.java` (adresse littérale stricte, affichage RFC 5952 comme `host()` de PostgreSQL), `shared/text/IpAddress.java` et son validateur, `shared/web/ValidationGroups.java` (`Create`, `Update`). Les adresses sont stockées en `inet` (`@JdbcTypeCode(SqlTypes.INET)`, `InetAddress`). Les requêtes nettoient leurs chaînes dans le constructeur canonique, avant la validation (Review Focus 1). `adminStatus` vaut `ACTIVE` par défaut en `POST` et est obligatoire en `PUT`. Contraintes `CHECK` pour les règles du spec §10.3 exprimables en SQL.
+- Tests : `TagRulesTest`, `IpAddressesTest`, `ServersIT`, `support/ApplicationTestBase.api(...)`.
 
 **Interfaces :**
 
@@ -1031,7 +1038,8 @@ RETURNING failure_count
 - Créer :
   - `V6__projects.sql` ;
   - dans `projects/internal/` : `Project.java`, `Environment.java`, `EnvironmentKind.java`, `ProjectRepository.java`, `EnvironmentRepository.java`, `ProjectService.java`, `EnvironmentService.java`, `ProjectsController.java`, `EnvironmentsController.java`, `ProjectRequest.java`, `ProjectResponse.java`, `ProjectDetailResponse.java`, `EnvironmentRequest.java`, `EnvironmentResponse.java`, `ProjectsConstraintMappings.java`.
-- Tests : `ProjectsIT`, `EnvironmentsIT`.
+- Verrous : la création d'un environnement verrouille le projet en partage (`FOR SHARE`), la suppression d'un projet le verrouille en exclusif puis chacun de ses environnements ; rien ne s'ajoute à un parent en cours de suppression.
+- Tests : `ProjectsIT`, `EnvironmentsIT`, `projects/ProjectsTestBase`.
 
 **Interfaces :**
 
@@ -1080,7 +1088,9 @@ CREATE UNIQUE INDEX uq_environments_project_name_active ON environments (project
   - `V7__domains_deployments.sql` ;
   - dans `projects/internal/` : `Domain.java`, `Deployment.java`, `DomainService.java`, `DeploymentService.java`, `DomainsController.java`, `DeploymentsController.java`, `ServerDeploymentsController.java`, `ProjectDeploymentUsage.java`.
 - Modifier : `EnvironmentService.softDeleteWithChildren`, `ProjectDetailResponse`, `ProjectsConstraintMappings`.
-- Tests : `DomainsIT`, `DeploymentsIT`.
+- Créer aussi : `DomainRepository`, `DeploymentRepository`, `DomainRequest`, `DeploymentRequest`, `DomainResponse`, `DeploymentResponse`, `HostedEnvironmentResponse`.
+- Verrous : ajout d'un déploiement ou d'un domaine secondaire → environnement en `FOR SHARE` ; domaine principal → environnement en `FOR UPDATE` (deux bascules simultanées laissent exactement un principal) ; suppression d'un environnement → `FOR UPDATE` avant de lire ses enfants. Sans le verrou d'environnement, un déploiement validé après la suppression de l'environnement resterait invisible et bloquerait la suppression du VPS.
+- Tests : `DomainsIT`, `DeploymentsIT` (dont `concurrentAttachAndEnvironmentDeleteNeverOrphans` et `concurrentPrimarySwitchesKeepExactlyOne`, ajoutés au plan).
 
 **Interfaces :**
 
@@ -1088,7 +1098,7 @@ CREATE UNIQUE INDEX uq_environments_project_name_active ON environments (project
 - Produit :
   - `POST /api/v1/environments/{id}/domains`, `DELETE /api/v1/domains/{id}`, `POST /api/v1/environments/{id}/deployments`, `DELETE /api/v1/deployments/{id}`, `GET /api/v1/servers/{id}/deployments`, qui renvoie `List<HostedEnvironmentResponse(UUID deploymentId, UUID projectId, String projectName, UUID environmentId, String environmentName, String role)>`.
   - `ProjectDeploymentUsage implements ServerUsageChecker`.
-  - Beans `ConstraintMapping` : `uq_domains_hostname` vers `DUPLICATE` sur `hostname` ; `uq_deployments_env_server` vers `DEPLOYMENT_EXISTS`.
+  - Beans `ConstraintMapping` : `uq_domains_hostname` vers `DUPLICATE` sur `hostname` ; `uq_deployments_env_server` vers `DEPLOYMENT_EXISTS` sur `serverId`.
 
 - [ ] **Étape 1 : écrire `V7__domains_deployments.sql`** (spec §9.4).
 
@@ -1132,13 +1142,21 @@ CREATE INDEX ix_deployments_server ON deployments (server_id);
 **Fichiers :**
 
 - Créer : `audit/internal/AuditQueryService.java`, `audit/AuditLogsController.java`, `audit/AuditLogResponse.java`, `shared/web/OpenApiConfig.java`, `scripts/export-openapi.sh`, `contracts/openapi/core-api.yaml`.
+- Créer aussi : `identity/internal/security/AuthorizeBeforeBindingInterceptor.java`, enregistré par `SecurityConfig` comme `MappedInterceptor` (un `WebMvcConfigurer` serait chargé par les tests `@WebMvcTest`).
+- Modifier :
+  - `@SecurityRequirements` vide sur login, refresh et logout ;
+  - `@ResponseStatus` 201 et 204 sur les créations, suppressions et logout ;
+  - `@Schema(requiredMode = NOT_REQUIRED)` sur `version` et `adminStatus` ;
+  - motifs `PATTERN` ancrés ;
+  - `application.yml` : `springdoc.paths-to-match`, `writer-with-order-by-keys` et `default-produces-media-type`.
 - Tests : `AuditLogsIT`, `AuthorizationMatrixIT`, `DenyByDefaultIT`, `OpenApiContractIT`, `ProdProfileIT`.
 
 **Interfaces :**
 
 - Produit :
-  - `GET /api/v1/audit-logs` : filtres `actorUserId`, `action`, `targetType`, `targetId`, `from`, `to` ; tri `occurredAt` seulement, `desc` par défaut.
-  - `OpenApiConfig` : titre « VPS Sentinel Core API », version « 1 », schéma de sécurité `bearer` (JWT).
+  - `GET /api/v1/audit-logs` : filtres `actorUserId`, `action`, `targetType`, `targetId`, `from` (inclus), `to` (exclu) ; tri `occurredAt` seulement, `desc` par défaut, départage par id.
+  - `OpenApiConfig` : titre « VPS Sentinel Core API », version « 1 », schéma de sécurité `bearer` (JWT), serveur relatif, identifiants d'opération `<ressource><Méthode>`, réponse `default` Problem Details (spec §10.2).
+  - Le `@PreAuthorize` est évalué avant la lecture de la requête (spec §8.11) : un rôle refusé reçoit 403, même avec un corps invalide.
   - Test `record EndpointCase(HttpMethod method, String path, String access, boolean pcrExempt)`, où `access` vaut une constante `Permissions`, `"PUBLIC"` ou `"AUTHENTICATED"`. Une entrée par ligne du spec §10.1.
 
 - [ ] **Étape 1 : écrire les tests.**
@@ -1183,16 +1201,19 @@ void accessFollowsMatrix(EndpointCase c, RoleCode role) {
 **Fichiers :**
 
 - Créer : `frontend/` (template `react-ts`), `package.json` (versions des Global Constraints), `vite.config.ts`, `eslint.config.js`, `vitest.config.ts`, `src/test/setup.ts`, `src/test/server.ts`, `src/api/schema.d.ts` (généré), `src/api/client.ts`, `src/api/problem.ts`, `src/auth/permissions.ts`, `src/theme.ts`, `src/main.tsx`, `src/router.tsx`, `src/layout/AppLayout.tsx`, `frontend/.dockerignore`.
-- Tests : `src/layout/AppLayout.test.tsx`, `src/api/problem.test.ts`.
+- Créer aussi : `src/test/render.tsx` (`renderWithUser`, `renderApp`), `src/test/fixtures.ts`, `src/layout/PlaceholderPage.tsx`, `src/layout/StatusPages.tsx` (chargement, 403, 404, erreur de route), `public/favicon.svg`.
+- Tests : `src/layout/AppLayout.test.tsx`, `src/api/problem.test.ts`, `src/eslintConfig.test.ts` (la configuration réelle refuse `dangerouslySetInnerHTML`, spec §13.7).
 
 **Interfaces :**
 
 - Produit :
   - **Scripts npm :** `dev`, `build` (`tsc -b && vite build`), `lint` (`eslint .`), `typecheck` (`tsc -b --noEmit`), `test` (`vitest run`), `gen:api` (`openapi-typescript ../contracts/openapi/core-api.yaml -o src/api/schema.d.ts`).
-  - **`createApiClient(middleware: Middleware[]) : Client<paths>`** (openapi-fetch, `baseUrl: ''`).
+  - **`createApiClient(middleware: Middleware[]) : Client<paths>`** (openapi-fetch). `baseUrl` vaut l'origine de la page, pas `''` : le constructeur `Request` de Node (tests) refuse les URL relatives. Le `fetch` global est lu à chaque appel, pour que MSW l'intercepte.
+  - Ajouts à `problem.ts` : `asProblem(body, status)` (corps qui n'est pas un Problem Details → erreur générique `unexpected-response`) et `ApiError` (problème et réponse, pour `Retry-After`).
+  - Versions de l'outillage générées par le template remplacées par celles des Global Constraints : TypeScript 7 et ESLint 10 → 5.9.3 et 9.39.5 ; `eslint-plugin-react-refresh` retiré.
   - **`problem.ts`** : `type Problem = { type: string; title?: string; status: number; detail?: string; correlationId?: string; errors?: { field: string; message: string }[] }` ; `isProblem(x: unknown): x is Problem` ; `problemCode(p: Problem): string` (suffixe de l'URN) ; `fieldErrors(p: Problem): Record<string, string>`.
   - **`can(user: Me | null, permission: string): boolean`**.
-  - **`vite.config.ts`** : proxy `/api` vers `http://localhost:8080` ; Vitest avec `environment: 'jsdom'` et `setupFiles: ['src/test/setup.ts']`.
+  - **`vite.config.ts`** : proxy `/api` vers `http://127.0.0.1:8080` (selon le système, `localhost` peut désigner `::1`), port 5173 fixe (`strictPort` : c'est l'origine autorisée en dev) ; Vitest (`vitest.config.ts`) avec `environment: 'jsdom'` et `setupFiles: ['src/test/setup.ts']`.
   - **`eslint.config.js`** : `typescript-eslint` recommandé, `react-hooks`, et `react/no-danger: 'error'`.
 
 - [ ] **Étape 1 : générer et installer.**
@@ -1229,7 +1250,8 @@ test('isProblem rejects plain JSON', () => expect(isProblem({ foo: 1 })).toBe(fa
 **Fichiers :**
 
 - Créer : `src/auth/session.ts`, `src/auth/refreshCoordinator.ts`, `src/auth/authChannel.ts`, `src/api/authMiddleware.ts`, `src/auth/AuthProvider.tsx`, `src/auth/guards.tsx`, `src/auth/LoginPage.tsx`, `src/auth/ChangePasswordPage.tsx`, `src/auth/ProfilePage.tsx`.
-- Tests : `refreshCoordinator.test.ts`, `authMiddleware.test.ts`, `authChannel.test.ts`, `LoginPage.test.tsx`, `guards.test.tsx`, `ChangePasswordPage.test.tsx`.
+- Créer aussi : `src/api/retryAfter.ts` (`Retry-After` en secondes ou en date HTTP, message d'attente), `src/components/PasswordField.tsx` (`PasswordInput` de Mantine relie son erreur au champ, mais ne pose pas `aria-invalid`).
+- Tests : `refreshCoordinator.test.ts`, `authMiddleware.test.ts`, `authChannel.test.tsx` (rend l'application : `.tsx`), `LoginPage.test.tsx`, `guards.test.tsx`, `ChangePasswordPage.test.tsx`, `AuthProvider.test.tsx` (restauration, déconnexion, session perdue, `password-change-required`).
 
 **Interfaces :**
 
@@ -1245,8 +1267,13 @@ test('isProblem rejects plain JSON', () => expect(isProblem({ foo: 1 })).toBe(fa
     - Sur un 401, il appelle `refreshOnce` puis rejoue la requête une fois.
     - Chemins exclus : `/api/v1/auth/login`, `/api/v1/auth/refresh`, `/api/v1/auth/logout`.
     - Sur un 403 `password-change-required`, il appelle `onPasswordChangeRequired`.
-  - **`AuthProvider`** expose `useAuth(): { user, login(email, password), logout(), changePassword(current, next) }`.
-  - **`guards.tsx`** : `<RequireAuth>`, qui redirige vers `/login`, puis vers `/change-password` si `mustChangePassword` ; `<RequirePermission permission="…">`.
+  - **`AuthProvider`** expose `useAuth(): { status, user, api, login(email, password), logout(), changePassword(current, next) }` et `useApi()`.
+    - Il enveloppe le `RouterProvider` et n'utilise pas le routeur : chaque événement modifie la session, et les gardes en tirent la navigation. Session perdue → `/login`, avec la page quittée dans `state.from` ; `password-change-required` → `markPasswordChangeRequired()`, puis `/change-password`.
+    - `session.ts` vérifie une fois la réponse d'authentification (le contrat déclare facultatifs tous les champs de réponse) et retient la raison de la fin de session : après une déconnexion volontaire, la reconnexion ramène à l'accueil, pas à la page de l'utilisateur précédent.
+    - Le cache TanStack Query est vidé à chaque login, déconnexion ou perte de session.
+    - Les messages de `authChannel.ts` portent l'identifiant de l'onglet émetteur : `BroadcastChannel` remet aussi un message aux autres canaux du même onglet, et l'AuthProvider ne doit pas traiter sa propre déconnexion comme celle d'un autre onglet.
+  - **`guards.tsx`** : `<RequireAuth>`, qui affiche un chargement pendant la restauration de la session, redirige vers `/login`, puis vers `/change-password` si `mustChangePassword` ; `<RequirePermission permission="…">`, qui affiche « Accès refusé ».
+  - **`LoginPage`** : un utilisateur déjà connecté est redirigé ; le compte à rebours du 429 décompte les secondes de `Retry-After`.
 
 - [ ] **Étape 1 : écrire les tests.**
 

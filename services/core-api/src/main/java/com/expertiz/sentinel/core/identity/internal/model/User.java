@@ -81,6 +81,49 @@ public class User extends AssignedIdEntity {
         this.updatedAt = now;
     }
 
+    public void rename(String fullName, Instant now) {
+        this.fullName = Objects.requireNonNull(fullName, "fullName");
+        this.updatedAt = now;
+    }
+
+    public void changeRole(Role role, Instant now) {
+        this.role = Objects.requireNonNull(role, "role");
+        this.updatedAt = now;
+    }
+
+    public void disable(Instant now) {
+        this.status = UserStatus.DISABLED;
+        this.updatedAt = now;
+    }
+
+    public void enable(Instant now) {
+        this.status = UserStatus.ACTIVE;
+        this.updatedAt = now;
+    }
+
+    /** Suppression logique (spec §9.6) : le compte est aussi désactivé, et son email redevient disponible. */
+    public void delete(Instant now) {
+        this.deletedAt = now;
+        this.status = UserStatus.DISABLED;
+        this.updatedAt = now;
+    }
+
+    /** Mot de passe temporaire fixé par un admin : changement imposé, expiration (spec §8.6). */
+    public void resetPassword(String temporaryPasswordHash, Instant expiresAt, Instant now) {
+        this.passwordHash = Objects.requireNonNull(temporaryPasswordHash, "temporaryPasswordHash");
+        this.mustChangePassword = true;
+        this.passwordExpiresAt = expiresAt;
+        this.updatedAt = now;
+    }
+
+    /** Mot de passe choisi par l'utilisateur : plus de changement imposé ni d'expiration (spec §8.5). */
+    public void changePassword(String newPasswordHash, Instant now) {
+        this.passwordHash = Objects.requireNonNull(newPasswordHash, "newPasswordHash");
+        this.mustChangePassword = false;
+        this.passwordExpiresAt = null;
+        this.updatedAt = now;
+    }
+
     /** Champs auditables (liste blanche, spec §9.5) : jamais le hash ni les dates techniques. */
     public Map<String, Object> auditState() {
         Map<String, Object> state = new LinkedHashMap<>();

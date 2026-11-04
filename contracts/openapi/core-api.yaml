@@ -1,0 +1,1535 @@
+openapi: 3.1.0
+info:
+  title: VPS Sentinel Core API
+  version: "1"
+servers:
+- url: /
+security:
+- bearer: []
+paths:
+  /api/v1/audit-logs:
+    get:
+      operationId: auditLogsList
+      parameters:
+      - in: query
+        name: actorUserId
+        required: false
+        schema:
+          type: string
+      - in: query
+        name: action
+        required: false
+        schema:
+          type: string
+      - in: query
+        name: targetType
+        required: false
+        schema:
+          type: string
+      - in: query
+        name: targetId
+        required: false
+        schema:
+          type: string
+      - description: "Inclus. Instant ISO-8601, par exemple 2026-11-02T10:30:00Z."
+        in: query
+        name: from
+        required: false
+        schema:
+          type: string
+      - description: "Exclu. Instant ISO-8601, postérieur à from."
+        in: query
+        name: to
+        required: false
+        schema:
+          type: string
+      - in: query
+        name: page
+        required: false
+        schema:
+          type: integer
+          format: int32
+      - in: query
+        name: size
+        required: false
+        schema:
+          type: integer
+          format: int32
+      - in: query
+        name: sort
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PageResponseAuditLogResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Erreur au format Problem Details (RFC 9457)
+      tags:
+      - audit-logs-controller
+  /api/v1/auth/change-password:
+    post:
+      operationId: authChangePassword
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangePasswordRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Erreur au format Problem Details (RFC 9457)
+      tags:
+      - auth-controller
+  /api/v1/auth/login:
+    post:
+      operationId: authLogin
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Erreur au format Problem Details (RFC 9457)
+      security: []
+      tags:
+      - auth-controller
+  /api/v1/auth/logout:
+    post:
+      operationId: authLogout
+      parameters:
+      - in: cookie
+        name: sentinel_rt
+        required: false
+        schema:
+          type: string
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Erreur au format Problem Details (RFC 9457)
+      security: []
+      tags:
+      - auth-controller
+  /api/v1/auth/refresh:
+    post:
+      operationId: authRefresh
+      parameters:
+      - in: cookie
+        name: sentinel_rt
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Erreur au format Problem Details (RFC 9457)
+      security: []
+      tags:
+      - auth-controller
+  /api/v1/deployments/{id}:
+    delete:
+      operationId: deploymentsDetach
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Erreur au format Problem Details (RFC 9457)
+      tags:
+      - deployments-controller
+  /api/v1/domains/{id}:
+    delete:
+      operationId: domainsRemove
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Erreur au format Problem Details (RFC 9457)
+      tags:
+      - domains-controller
+  /api/v1/environments/{environmentId}/deployments:
+    post:
+      operationId: deploymentsAttach
+      parameters:
+      - in: path
+        name: environmentId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeploymentRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeploymentResponse"
+          description: Created
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Erreur au format Problem Details (RFC 9457)
+      tags:
+      - deployments-controller
+  /api/v1/environments/{environmentId}/domains:
+    post:
+      operationId: domainsAdd
+      parameters:
+      - in: path
+        name: environmentId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DomainRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DomainResponse"
+          description: Created
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Erreur au format Problem Details (RFC 9457)
+      tags:
+      - domains-controller
+  /api/v1/environments/{id}:
+    delete:
+      operationId: environmentsDelete
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Erreur au format Problem Details (RFC 9457)
+      tags:
+      - environments-controller
+    put:
+      operationId: environmentsReplace
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EnvironmentRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnvironmentResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Erreur au format Problem Details (RFC 9457)
+      tags:
+      - environments-controller
+  /api/v1/me:
+    get:
+      operationId: meGet
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Erreur au format Problem Details (RFC 9457)
+      tags:
+      - me-controller
+  /api/v1/projects:
+    get:
+      operationId: projectsList
+      parameters:
+      - in: query
+        name: q
+        required: false
+        schema:
+          type: string
+      - in: query
+        name: page
+        required: false
+        schema:
+          type: integer
+          format: int32
+      - in: query
+        name: size
+        required: false
+        schema:
+          type: integer
+          format: int32
+      - in: query
+        name: sort
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PageResponseProjectResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Erreur au format Problem Details (RFC 9457)
+      tags:
+      - projects-controller
+    post:
+      operationId: projectsCreate
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectDetailResponse"
+          description: Created
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Erreur au format Problem Details (RFC 9457)
+      tags:
+      - projects-controller
+  /api/v1/projects/{id}:
+    delete:
+      operationId: projectsDelete
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Erreur au format Problem Details (RFC 9457)
+      tags:
+      - projects-controller
+    get:
+      operationId: projectsGet
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectDetailResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Erreur au format Problem Details (RFC 9457)
+      tags:
+      - projects-controller
+    put:
+      operationId: projectsReplace
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectDetailResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Erreur au format Problem Details (RFC 9457)
+      tags:
+      - projects-controller
+  /api/v1/projects/{projectId}/environments:
+    post:
+      operationId: environmentsCreate
+      parameters:
+      - in: path
+        name: projectId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EnvironmentRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnvironmentResponse"
+          description: Created
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Erreur au format Problem Details (RFC 9457)
+      tags:
+      - environments-controller
+  /api/v1/servers:
+    get:
+      operationId: serversList
+      parameters:
+      - in: query
+        name: q
+        required: false
+        schema:
+          type: string
+      - in: query
+        name: tag
+        required: false
+        schema:
+          type: string
+      - in: query
+        name: provider
+        required: false
+        schema:
+          type: string
+      - in: query
+        name: region
+        required: false
+        schema:
+          type: string
+      - in: query
+        name: adminStatus
+        required: false
+        schema:
+          type: string
+      - in: query
+        name: page
+        required: false
+        schema:
+          type: integer
+          format: int32
+      - in: query
+        name: size
+        required: false
+        schema:
+          type: integer
+          format: int32
+      - in: query
+        name: sort
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PageResponseServerResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Erreur au format Problem Details (RFC 9457)
+      tags:
+      - servers-controller
+    post:
+      operationId: serversCreate
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ServerRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServerResponse"
+          description: Created
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Erreur au format Problem Details (RFC 9457)
+      tags:
+      - servers-controller
+  /api/v1/servers/facets:
+    get:
+      operationId: serversFacets
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServerFacetsResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Erreur au format Problem Details (RFC 9457)
+      tags:
+      - servers-controller
+  /api/v1/servers/{id}:
+    delete:
+      operationId: serversDelete
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Erreur au format Problem Details (RFC 9457)
+      tags:
+      - servers-controller
+    get:
+      operationId: serversGet
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServerResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Erreur au format Problem Details (RFC 9457)
+      tags:
+      - servers-controller
+    put:
+      operationId: serversReplace
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ServerRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServerResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Erreur au format Problem Details (RFC 9457)
+      tags:
+      - servers-controller
+  /api/v1/servers/{serverId}/deployments:
+    get:
+      operationId: serverDeploymentsHostedBy
+      parameters:
+      - in: path
+        name: serverId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/HostedEnvironmentResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Erreur au format Problem Details (RFC 9457)
+      tags:
+      - server-deployments-controller
+  /api/v1/users:
+    get:
+      operationId: usersList
+      parameters:
+      - in: query
+        name: q
+        required: false
+        schema:
+          type: string
+      - in: query
+        name: role
+        required: false
+        schema:
+          type: string
+      - in: query
+        name: status
+        required: false
+        schema:
+          type: string
+      - in: query
+        name: page
+        required: false
+        schema:
+          type: integer
+          format: int32
+      - in: query
+        name: size
+        required: false
+        schema:
+          type: integer
+          format: int32
+      - in: query
+        name: sort
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PageResponseUserResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Erreur au format Problem Details (RFC 9457)
+      tags:
+      - users-controller
+    post:
+      operationId: usersCreate
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateUserRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreatedUserResponse"
+          description: Created
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Erreur au format Problem Details (RFC 9457)
+      tags:
+      - users-controller
+  /api/v1/users/{id}:
+    delete:
+      operationId: usersDelete
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Erreur au format Problem Details (RFC 9457)
+      tags:
+      - users-controller
+    get:
+      operationId: usersGet
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Erreur au format Problem Details (RFC 9457)
+      tags:
+      - users-controller
+    patch:
+      operationId: usersPatch
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PatchUserRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Erreur au format Problem Details (RFC 9457)
+      tags:
+      - users-controller
+  /api/v1/users/{id}/reset-password:
+    post:
+      operationId: usersResetPassword
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TemporaryPasswordResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Erreur au format Problem Details (RFC 9457)
+      tags:
+      - users-controller
+components:
+  schemas:
+    AuditLogResponse:
+      type: object
+      properties:
+        action:
+          type: string
+        actorEmail:
+          type: string
+        actorType:
+          type: string
+        actorUserId:
+          type: string
+          format: uuid
+        correlationId:
+          type: string
+        details:
+          type: object
+          additionalProperties: {}
+        id:
+          type: string
+          format: uuid
+        ip:
+          type: string
+        occurredAt:
+          type: string
+          format: date-time
+        targetId:
+          type: string
+          format: uuid
+        targetType:
+          type: string
+    AuthResponse:
+      type: object
+      properties:
+        accessToken:
+          type: string
+        expiresIn:
+          type: integer
+          format: int64
+        tokenType:
+          type: string
+        user:
+          $ref: "#/components/schemas/MeResponse"
+    ChangePasswordRequest:
+      type: object
+      properties:
+        currentPassword:
+          type: string
+          maxLength: 1024
+          minLength: 0
+        newPassword:
+          type: string
+          maxLength: 1024
+          minLength: 0
+      required:
+      - currentPassword
+      - newPassword
+    CreateUserRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          minLength: 1
+        fullName:
+          type: string
+          maxLength: 120
+          minLength: 0
+        role:
+          type: string
+          minLength: 1
+          pattern: ^(SUPER_ADMIN|INFRA_ADMIN|DEVOPS|DEVELOPER|VIEWER)$
+      required:
+      - email
+      - fullName
+      - role
+    CreatedUserResponse:
+      type: object
+      properties:
+        temporaryPassword:
+          type: string
+        temporaryPasswordExpiresAt:
+          type: string
+          format: date-time
+        user:
+          $ref: "#/components/schemas/UserResponse"
+    DeploymentRequest:
+      type: object
+      properties:
+        role:
+          type: string
+          maxLength: 50
+          minLength: 0
+          pattern: "^[A-Za-z0-9][A-Za-z0-9 ._-]*$"
+        serverId:
+          type: string
+          format: uuid
+      required:
+      - serverId
+    DeploymentResponse:
+      type: object
+      properties:
+        createdAt:
+          type: string
+          format: date-time
+        environmentId:
+          type: string
+          format: uuid
+        id:
+          type: string
+          format: uuid
+        role:
+          type: string
+        serverAdminStatus:
+          type: string
+        serverId:
+          type: string
+          format: uuid
+        serverName:
+          type: string
+    DomainRequest:
+      type: object
+      properties:
+        hostname:
+          type: string
+          minLength: 1
+        isPrimary:
+          type: boolean
+      required:
+      - hostname
+    DomainResponse:
+      type: object
+      properties:
+        createdAt:
+          type: string
+          format: date-time
+        hostname:
+          type: string
+        id:
+          type: string
+          format: uuid
+        isPrimary:
+          type: boolean
+    EnvironmentDetail:
+      type: object
+      properties:
+        createdAt:
+          type: string
+          format: date-time
+        deployments:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeploymentResponse"
+        domains:
+          type: array
+          items:
+            $ref: "#/components/schemas/DomainResponse"
+        id:
+          type: string
+          format: uuid
+        kind:
+          type: string
+        name:
+          type: string
+        updatedAt:
+          type: string
+          format: date-time
+        version:
+          type: integer
+          format: int64
+    EnvironmentRequest:
+      type: object
+      properties:
+        kind:
+          type: string
+          pattern: ^(PRODUCTION|STAGING|DEVELOPMENT|OTHER)$
+        name:
+          type: string
+          maxLength: 50
+          minLength: 0
+          pattern: "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+        version:
+          type: integer
+          format: int64
+          description: "Version lue, pour le verrouillage optimiste : obligatoire\
+            \ en PUT, refusée en POST."
+          minimum: 0
+      required:
+      - kind
+      - name
+    EnvironmentResponse:
+      type: object
+      properties:
+        createdAt:
+          type: string
+          format: date-time
+        id:
+          type: string
+          format: uuid
+        kind:
+          type: string
+        name:
+          type: string
+        projectId:
+          type: string
+          format: uuid
+        updatedAt:
+          type: string
+          format: date-time
+        version:
+          type: integer
+          format: int64
+    HostedEnvironmentResponse:
+      type: object
+      properties:
+        deploymentId:
+          type: string
+          format: uuid
+        environmentId:
+          type: string
+          format: uuid
+        environmentName:
+          type: string
+        projectId:
+          type: string
+          format: uuid
+        projectName:
+          type: string
+        role:
+          type: string
+    LoginRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          maxLength: 254
+          minLength: 0
+        password:
+          type: string
+          maxLength: 1024
+          minLength: 0
+      required:
+      - email
+      - password
+    MeResponse:
+      type: object
+      properties:
+        email:
+          type: string
+        fullName:
+          type: string
+        id:
+          type: string
+          format: uuid
+        mustChangePassword:
+          type: boolean
+        permissions:
+          type: array
+          items:
+            type: string
+        role:
+          type: string
+    PageResponseAuditLogResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AuditLogResponse"
+        page:
+          type: integer
+          format: int32
+        size:
+          type: integer
+          format: int32
+        totalItems:
+          type: integer
+          format: int64
+        totalPages:
+          type: integer
+          format: int32
+    PageResponseProjectResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProjectResponse"
+        page:
+          type: integer
+          format: int32
+        size:
+          type: integer
+          format: int32
+        totalItems:
+          type: integer
+          format: int64
+        totalPages:
+          type: integer
+          format: int32
+    PageResponseServerResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ServerResponse"
+        page:
+          type: integer
+          format: int32
+        size:
+          type: integer
+          format: int32
+        totalItems:
+          type: integer
+          format: int64
+        totalPages:
+          type: integer
+          format: int32
+    PageResponseUserResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/UserResponse"
+        page:
+          type: integer
+          format: int32
+        size:
+          type: integer
+          format: int32
+        totalItems:
+          type: integer
+          format: int64
+        totalPages:
+          type: integer
+          format: int32
+    PatchUserRequest:
+      type: object
+      description: Champs absents inchangés ; null refusé ; champ inconnu refusé.
+      properties:
+        fullName:
+          type: string
+          maxLength: 120
+        role:
+          type: string
+          enum:
+          - SUPER_ADMIN
+          - INFRA_ADMIN
+          - DEVOPS
+          - DEVELOPER
+          - VIEWER
+        status:
+          type: string
+          enum:
+          - ACTIVE
+          - DISABLED
+        version:
+          type: integer
+          format: int64
+          description: "Version lue, pour le verrouillage optimiste"
+          minimum: 0
+      required:
+      - version
+    Problem:
+      type: object
+      properties:
+        correlationId:
+          type: string
+        detail:
+          type: string
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              message:
+                type: string
+            required:
+            - field
+            - message
+        instance:
+          type: string
+        status:
+          type: integer
+          format: int32
+        title:
+          type: string
+        type:
+          type: string
+          description: urn:sentinel:problem:<code> (spec §11)
+      required:
+      - status
+      - title
+      - type
+    ProjectDetailResponse:
+      type: object
+      properties:
+        createdAt:
+          type: string
+          format: date-time
+        description:
+          type: string
+        environments:
+          type: array
+          items:
+            $ref: "#/components/schemas/EnvironmentDetail"
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        repositoryUrl:
+          type: string
+        updatedAt:
+          type: string
+          format: date-time
+        version:
+          type: integer
+          format: int64
+    ProjectRequest:
+      type: object
+      properties:
+        description:
+          type: string
+          maxLength: 2000
+          minLength: 0
+        name:
+          type: string
+          maxLength: 100
+          minLength: 0
+        repositoryUrl:
+          type: string
+          maxLength: 500
+          minLength: 0
+        version:
+          type: integer
+          format: int64
+          description: "Version lue, pour le verrouillage optimiste : obligatoire\
+            \ en PUT, refusée en POST."
+          minimum: 0
+      required:
+      - name
+    ProjectResponse:
+      type: object
+      properties:
+        createdAt:
+          type: string
+          format: date-time
+        description:
+          type: string
+        environmentCount:
+          type: integer
+          format: int64
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        repositoryUrl:
+          type: string
+        updatedAt:
+          type: string
+          format: date-time
+        version:
+          type: integer
+          format: int64
+    ServerFacetsResponse:
+      type: object
+      properties:
+        providers:
+          type: array
+          items:
+            type: string
+        regions:
+          type: array
+          items:
+            type: string
+        tags:
+          type: array
+          items:
+            type: string
+    ServerRequest:
+      type: object
+      properties:
+        adminStatus:
+          type: string
+          description: Obligatoire en PUT ; ACTIVE par défaut en POST.
+          pattern: ^(ACTIVE|MAINTENANCE|DECOMMISSIONED)$
+        cpuCores:
+          type: integer
+          format: int32
+          maximum: 1024
+          minimum: 1
+        description:
+          type: string
+          maxLength: 2000
+          minLength: 0
+        diskGb:
+          type: integer
+          format: int32
+          maximum: 1048576
+          minimum: 1
+        hostname:
+          type: string
+        name:
+          type: string
+          maxLength: 100
+          minLength: 0
+          pattern: "^[A-Za-z0-9][A-Za-z0-9 ._-]*$"
+        osFamily:
+          type: string
+          pattern: ^(UBUNTU|DEBIAN|RHEL|ROCKY|ALMALINUX|CENTOS|OTHER)$
+        osVersion:
+          type: string
+          maxLength: 32
+          minLength: 0
+          pattern: "^[A-Za-z0-9._ -]+$"
+        privateIp:
+          type: string
+        provider:
+          type: string
+          maxLength: 100
+          minLength: 0
+        publicIp:
+          type: string
+        ramMb:
+          type: integer
+          format: int32
+          maximum: 16777216
+          minimum: 1
+        region:
+          type: string
+          maxLength: 100
+          minLength: 0
+        tags:
+          type: array
+          items:
+            type: string
+        version:
+          type: integer
+          format: int64
+          description: "Version lue, pour le verrouillage optimiste : obligatoire\
+            \ en PUT, refusée en POST."
+          minimum: 0
+      required:
+      - name
+    ServerResponse:
+      type: object
+      properties:
+        adminStatus:
+          type: string
+        cpuCores:
+          type: integer
+          format: int32
+        createdAt:
+          type: string
+          format: date-time
+        description:
+          type: string
+        diskGb:
+          type: integer
+          format: int32
+        hostname:
+          type: string
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        osFamily:
+          type: string
+        osVersion:
+          type: string
+        privateIp:
+          type: string
+        provider:
+          type: string
+        publicIp:
+          type: string
+        ramMb:
+          type: integer
+          format: int32
+        region:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        updatedAt:
+          type: string
+          format: date-time
+        version:
+          type: integer
+          format: int64
+    TemporaryPasswordResponse:
+      type: object
+      properties:
+        temporaryPassword:
+          type: string
+        temporaryPasswordExpiresAt:
+          type: string
+          format: date-time
+    UserResponse:
+      type: object
+      properties:
+        createdAt:
+          type: string
+          format: date-time
+        email:
+          type: string
+        fullName:
+          type: string
+        id:
+          type: string
+          format: uuid
+        lastLoginAt:
+          type: string
+          format: date-time
+        mustChangePassword:
+          type: boolean
+        passwordExpiresAt:
+          type: string
+          format: date-time
+        role:
+          type: string
+        status:
+          type: string
+        updatedAt:
+          type: string
+          format: date-time
+        version:
+          type: integer
+          format: int64
+  securitySchemes:
+    bearer:
+      bearerFormat: JWT
+      scheme: bearer
+      type: http

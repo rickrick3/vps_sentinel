@@ -4,9 +4,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.expertiz.sentinel.core.support.IntegrationTest;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.client.EntityExchangeResult;
 
 /**
  * Endpoints de session (spec §8.9) : {@code Origin} obligatoire et autorisé, vérifié avant tout le reste. Ils
@@ -63,18 +65,23 @@ class OriginCheckIT extends IntegrationTest {
                 .jsonPath("$.type").isEqualTo("urn:sentinel:problem:origin-not-allowed");
     }
 
-    /** Les endpoints arrivent en M4 : la requête doit seulement franchir le contrôle d'origine et l'authentification. */
+    /** Avec l'origine autorisée et sans jeton, la requête atteint l'endpoint (400 sans corps valide, 401 sans cookie, 204). */
     @ParameterizedTest
-    @ValueSource(strings = {"/api/v1/auth/login", "/api/v1/auth/refresh", "/api/v1/auth/logout"})
-    void allowedOriginPassesWithoutToken(String path) {
-        assertThat(postWithOrigin(path, null)).isNotIn(401, 403);
+    @CsvSource({"/api/v1/auth/login, 400", "/api/v1/auth/refresh, 401", "/api/v1/auth/logout, 204"})
+    void allowedOriginReachesTheEndpoint(String path, int status) {
+        assertThat(postWithOrigin(path, null).getStatus().value()).isEqualTo(status);
     }
 
     @ParameterizedTest
     @ValueSource(strings = {"/api/v1/auth/login", "/api/v1/auth/refresh", "/api/v1/auth/logout"})
     void sessionEndpointsIgnoreBearerTokens(String path) {
         // Un access token expiré ou invalide ne doit pas empêcher le logout ni le refresh (spec §8.5).
-        assertThat(postWithOrigin(path, "Bearer not-a-valid-token")).isNotIn(401, 403);
+        EntityExchangeResult<String> without = postWithOrigin(path, null);
+        EntityExchangeResult<String> with = postWithOrigin(path, "Bearer not-a-valid-token");
+
+        assertThat(with.getStatus()).isEqualTo(without.getStatus());
+        assertThat(with.getResponseHeaders().getFirst(HttpHeaders.WWW_AUTHENTICATE)).isNull();
+        assertThat(String.valueOf(with.getResponseBody())).doesNotContain("Jeton d'accès invalide");
     }
 
     @ParameterizedTest
@@ -87,11 +94,11 @@ class OriginCheckIT extends IntegrationTest {
                 .expectStatus().isUnauthorized();
     }
 
-    private int postWithOrigin(String path, String authorization) {
+    private EntityExchangeResult<String> postWithOrigin(String path, String authorization) {
         var request = http.post().uri(path).header(HttpHeaders.ORIGIN, ALLOWED_ORIGIN);
         if (authorization != null) {
             request.header(HttpHeaders.AUTHORIZATION, authorization);
         }
-        return request.contentType(MediaType.APPLICATION_JSON).body("{}").exchange().returnResult().getStatus().value();
+        return request.contentType(MediaType.APPLICATION_JSON).body("{}").exchange().expectBody(String.class).returnResult();
     }
 }
