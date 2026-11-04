@@ -15,6 +15,7 @@ import jakarta.validation.Valid;
 import java.net.URI;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -28,6 +29,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 /** Administration des utilisateurs (spec §10.1) : lecture avec {@code user:read}, écritures avec {@code user:manage}. */
@@ -66,6 +68,7 @@ class UsersController {
 
     @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
     @PreAuthorize(MANAGE)
+    @ResponseStatus(HttpStatus.CREATED)
     ResponseEntity<CreatedUserResponse> create(@Valid @RequestBody CreateUserRequest request) {
         CreatedUser created = admin.create(request.email(), request.fullName(), RoleCode.valueOf(request.role()));
         UserResponse user = UserResponse.of(created.user());
@@ -85,9 +88,9 @@ class UsersController {
 
     @DeleteMapping("/{id}")
     @PreAuthorize(MANAGE)
-    ResponseEntity<Void> delete(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id) {
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    void delete(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id) {
         admin.delete(UUID.fromString(jwt.getSubject()), id);
-        return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/{id}/reset-password")

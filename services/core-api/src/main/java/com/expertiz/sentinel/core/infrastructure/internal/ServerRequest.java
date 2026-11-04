@@ -6,6 +6,7 @@ import com.expertiz.sentinel.core.shared.text.IpAddress;
 import com.expertiz.sentinel.core.shared.text.NoControlChars;
 import com.expertiz.sentinel.core.shared.text.TextRules;
 import com.expertiz.sentinel.core.shared.web.ValidationGroups;
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
@@ -38,11 +39,13 @@ public record ServerRequest(
         @Min(1) @Max(1024) Integer cpuCores,
         @Min(1) @Max(16_777_216) Integer ramMb,
         @Min(1) @Max(1_048_576) Integer diskGb,
+        @Schema(requiredMode = Schema.RequiredMode.NOT_REQUIRED, description = "Obligatoire en PUT ; ACTIVE par défaut en POST.")
         @NotNull(groups = ValidationGroups.Update.class)
         @Pattern(regexp = AdminStatus.PATTERN, message = "statut inconnu")
         String adminStatus,
         @Size(max = 2000, message = "2000 caractères maximum") @NoControlChars(allowNewlines = true) String description,
         List<String> tags,
+        @Schema(requiredMode = Schema.RequiredMode.NOT_REQUIRED, description = ValidationGroups.VERSION_DESCRIPTION)
         @Null(groups = ValidationGroups.Create.class, message = "ne doit pas être fourni à la création")
         @NotNull(groups = ValidationGroups.Update.class)
         @PositiveOrZero

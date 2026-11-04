@@ -1142,13 +1142,21 @@ CREATE INDEX ix_deployments_server ON deployments (server_id);
 **Fichiers :**
 
 - Créer : `audit/internal/AuditQueryService.java`, `audit/AuditLogsController.java`, `audit/AuditLogResponse.java`, `shared/web/OpenApiConfig.java`, `scripts/export-openapi.sh`, `contracts/openapi/core-api.yaml`.
+- Créer aussi : `identity/internal/security/AuthorizeBeforeBindingInterceptor.java`, enregistré par `SecurityConfig` comme `MappedInterceptor` (un `WebMvcConfigurer` serait chargé par les tests `@WebMvcTest`).
+- Modifier :
+  - `@SecurityRequirements` vide sur login, refresh et logout ;
+  - `@ResponseStatus` 201 et 204 sur les créations, suppressions et logout ;
+  - `@Schema(requiredMode = NOT_REQUIRED)` sur `version` et `adminStatus` ;
+  - motifs `PATTERN` ancrés ;
+  - `application.yml` : `springdoc.paths-to-match`, `writer-with-order-by-keys` et `default-produces-media-type`.
 - Tests : `AuditLogsIT`, `AuthorizationMatrixIT`, `DenyByDefaultIT`, `OpenApiContractIT`, `ProdProfileIT`.
 
 **Interfaces :**
 
 - Produit :
-  - `GET /api/v1/audit-logs` : filtres `actorUserId`, `action`, `targetType`, `targetId`, `from`, `to` ; tri `occurredAt` seulement, `desc` par défaut.
-  - `OpenApiConfig` : titre « VPS Sentinel Core API », version « 1 », schéma de sécurité `bearer` (JWT).
+  - `GET /api/v1/audit-logs` : filtres `actorUserId`, `action`, `targetType`, `targetId`, `from` (inclus), `to` (exclu) ; tri `occurredAt` seulement, `desc` par défaut, départage par id.
+  - `OpenApiConfig` : titre « VPS Sentinel Core API », version « 1 », schéma de sécurité `bearer` (JWT), serveur relatif, identifiants d'opération `<ressource><Méthode>`, réponse `default` Problem Details (spec §10.2).
+  - Le `@PreAuthorize` est évalué avant la lecture de la requête (spec §8.11) : un rôle refusé reçoit 403, même avec un corps invalide.
   - Test `record EndpointCase(HttpMethod method, String path, String access, boolean pcrExempt)`, où `access` vaut une constante `Permissions`, `"PUBLIC"` ou `"AUTHENTICATED"`. Une entrée par ligne du spec §10.1.
 
 - [ ] **Étape 1 : écrire les tests.**

@@ -32,7 +32,7 @@ class MeController {
      */
     @GetMapping
     @PreAuthorize("isAuthenticated()")
-    MeResponse me(@AuthenticationPrincipal Jwt jwt) {
+    MeResponse get(@AuthenticationPrincipal Jwt jwt) {
         User user = users.findById(UUID.fromString(jwt.getSubject()))
                 .filter(found -> found.getStatus() == UserStatus.ACTIVE)
                 .orElseThrow(() -> new ApiException(ProblemType.UNAUTHORIZED, "Authentification requise."));

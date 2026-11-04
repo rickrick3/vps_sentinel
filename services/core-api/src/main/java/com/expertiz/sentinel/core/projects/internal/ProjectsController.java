@@ -6,6 +6,7 @@ import com.expertiz.sentinel.core.shared.web.ValidationGroups;
 import jakarta.validation.groups.Default;
 import java.net.URI;
 import java.util.UUID;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -18,6 +19,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 /** Projets (spec §10.1) : lecture {@code project:read}, écriture {@code project:write}, suppression {@code project:delete}. */
@@ -53,6 +55,7 @@ class ProjectsController {
 
     @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
     @PreAuthorize(WRITE)
+    @ResponseStatus(HttpStatus.CREATED)
     ResponseEntity<ProjectDetailResponse> create(@Validated({Default.class, ValidationGroups.Create.class}) @RequestBody ProjectRequest request) {
         ProjectDetailResponse created = projects.create(request);
         return ResponseEntity.created(URI.create("/api/v1/projects/" + created.id())).body(created);
@@ -67,8 +70,8 @@ class ProjectsController {
 
     @DeleteMapping("/{id}")
     @PreAuthorize(DELETE)
-    ResponseEntity<Void> delete(@PathVariable UUID id) {
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    void delete(@PathVariable UUID id) {
         projects.delete(id);
-        return ResponseEntity.noContent().build();
     }
 }

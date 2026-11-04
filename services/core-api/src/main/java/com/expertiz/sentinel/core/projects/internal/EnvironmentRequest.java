@@ -2,6 +2,7 @@ package com.expertiz.sentinel.core.projects.internal;
 
 import com.expertiz.sentinel.core.shared.text.TextRules;
 import com.expertiz.sentinel.core.shared.web.ValidationGroups;
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Null;
@@ -17,6 +18,7 @@ public record EnvironmentRequest(
                 message = "lettres, chiffres, « . », « _ » ou « - », en commençant par une lettre ou un chiffre")
         String name,
         @NotNull @Pattern(regexp = EnvironmentKind.PATTERN, message = "nature inconnue") String kind,
+        @Schema(requiredMode = Schema.RequiredMode.NOT_REQUIRED, description = ValidationGroups.VERSION_DESCRIPTION)
         @Null(groups = ValidationGroups.Create.class, message = "ne doit pas être fourni à la création")
         @NotNull(groups = ValidationGroups.Update.class)
         @PositiveOrZero

@@ -4,6 +4,7 @@ import com.expertiz.sentinel.core.shared.web.ValidationGroups;
 import jakarta.validation.groups.Default;
 import java.net.URI;
 import java.util.UUID;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -13,6 +14,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 /** Environnements (spec §10.1) : écriture {@code project:write}, suppression {@code project:delete}. */
@@ -27,6 +29,7 @@ class EnvironmentsController {
 
     @PostMapping(path = "/api/v1/projects/{projectId}/environments", consumes = MediaType.APPLICATION_JSON_VALUE)
     @PreAuthorize(ProjectsController.WRITE)
+    @ResponseStatus(HttpStatus.CREATED)
     ResponseEntity<EnvironmentResponse> create(@PathVariable UUID projectId,
             @Validated({Default.class, ValidationGroups.Create.class}) @RequestBody EnvironmentRequest request) {
         EnvironmentResponse created = environments.create(projectId, request);
@@ -43,8 +46,8 @@ class EnvironmentsController {
     /** Supprime aussi ses domaines et ses déploiements (spec §9.6). */
     @DeleteMapping("/api/v1/environments/{id}")
     @PreAuthorize(ProjectsController.DELETE)
-    ResponseEntity<Void> delete(@PathVariable UUID id) {
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    void delete(@PathVariable UUID id) {
         environments.delete(id);
-        return ResponseEntity.noContent().build();
     }
 }

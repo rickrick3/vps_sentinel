@@ -118,6 +118,15 @@ curl -s "$API/servers/<serverId>/deployments" -H "Authorization: Bearer <accessT
 
 `PUT` remplace la ressource entière (champ facultatif absent = vidé) et exige la `version` lue. Un VPS utilisé par un déploiement ne peut être ni supprimé ni passé en `DECOMMISSIONED` (409 `server-in-use`).
 
+Journal d'audit (`audit:read` : SUPER_ADMIN et INFRA_ADMIN), du plus récent au plus ancien ; `from` inclus, `to` exclu :
+
+```bash
+curl -s "$API/audit-logs?targetType=SERVER&from=2026-11-01T00:00:00Z&to=2026-11-02T00:00:00Z&size=50" \
+     -H "Authorization: Bearer <accessToken>"
+```
+
+Contrat OpenAPI : `contracts/openapi/core-api.yaml`, d'où le frontend génère ses types. Le build échoue s'il ne correspond plus à l'API ; après une modification d'endpoint, le régénérer avec `bash scripts/export-openapi.sh` (Docker requis), puis relire le diff.
+
 Dans la pile Compose, core-api n'est pas publié sur le poste : les mêmes requêtes passent par `docker compose -f docker-compose.yml -f docker-compose.dev.yml exec core-api curl …`, sur `http://localhost:8080`.
 
 ## Sécurité de l'API
@@ -125,7 +134,7 @@ Dans la pile Compose, core-api n'est pas publié sur le poste : les mêmes requ�
 Détails et justifications : §8 de la [spécification](docs/superpowers/specs/2026-11-02-phase1-foundation-design.md).
 
 - **Authentification :** uniquement `Authorization: Bearer <access token>`, jamais dans l'URL ni par cookie. L'access token est un JWT RS256 de 15 minutes, signé avec `jwt-private.pem`. Sont vérifiés : la signature, l'en-tête `typ: at+jwt`, `iss` (`vps-sentinel`), `aud` (`core-api`), `exp`, `iat`, et la présence et le type de chaque claim. Aucune tolérance de décalage d'horloge.
-- **Refus par défaut :** sans jeton, seules ces routes répondent : `GET /actuator/health`, le contrat OpenAPI (dev et test) et `POST /api/v1/auth/{login,refresh,logout}`. Ces trois dernières exigent un en-tête `Origin` présent dans `SENTINEL_ALLOWED_ORIGINS` (format `http(s)://hôte[:port]`, sans chemin ni joker ; une entrée invalide empêche le démarrage). Chaque contrôleur déclare un `@PreAuthorize` ; les permissions viennent du claim `perms`.
+- **Refus par défaut :** sans jeton, seules ces routes répondent : `GET /actuator/health`, le contrat OpenAPI (dev et test) et `POST /api/v1/auth/{login,refresh,logout}`. Ces trois dernières exigent un en-tête `Origin` présent dans `SENTINEL_ALLOWED_ORIGINS` (format `http(s)://hôte[:port]`, sans chemin ni joker ; une entrée invalide empêche le démarrage). Chaque contrôleur déclare un `@PreAuthorize` ; les permissions viennent du claim `perms`. Il est évalué avant la lecture de la requête : sans la permission, la réponse est 403, même si le corps ou les paramètres sont invalides.
 - **Changement de mot de passe imposé :** un jeton `pcr` n'ouvre que `POST /api/v1/auth/change-password`, `POST /api/v1/auth/logout` et `GET /api/v1/me` (méthode et chemin exacts). Tout le reste répond 403 `password-change-required`.
 - **Erreurs :** les 401 et 403, comme les requêtes refusées par le pare-feu de Spring Security, sont rendus en Problem Details. La raison d'un refus de jeton n'est jamais renvoyée.
 - **Politique des mots de passe :** de 12 à 128 caractères, comptés en points de code Unicode. Différent de l'email, sans tenir compte de la casse ni des espaces. Aucune règle de composition (NIST SP 800-63B).

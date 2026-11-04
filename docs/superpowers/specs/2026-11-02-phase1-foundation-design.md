@@ -1,7 +1,7 @@
 # VPS Sentinel — Phase 1 « Foundation » — Spécification de conception
 
 **Date :** 2026-11-02
-**Version :** 2.2 (intègre la revue architecturale, les arbitrages Q1 à Q9, les précisions de la phase 0 et celles du jalon M3)
+**Version :** 2.3 (intègre la revue architecturale, les arbitrages Q1 à Q9, les précisions de la phase 0 et celles des jalons M3 et M7)
 **Statut :** Validée le 2026-11-02
 **Référence :** [TAD v1.0](../../architecture/TAD-v1.0.md). Les renvois « TAD §x » pointent vers ce document ; les renvois « §x » sans préfixe pointent vers la présente spec.
 
@@ -13,6 +13,7 @@
 | 2 | 2026-11-02 | Intégration des 10 MUST FIX et des SHOULD FIX retenus de la revue, des arbitrages Q1 à Q9 et des précisions sur l'audit des identifiants et la concurrence des refresh tokens. Suivi détaillé en annexe A |
 | 2.1 | 2026-11-02 | Validation. JUnit Jupiter 6, version gérée par Spring Boot 4.1 (§4). Précisions issues de la phase 0 : ports de dev publiés sur la boucle locale (§6.3) ; volume PostgreSQL 18 monté sur `/var/lib/postgresql` (§6.1) ; `TEMPORARY` retiré et bases `postgres` et `template1` fermées à `PUBLIC` (§6.5, §13.5) |
 | 2.2 | 2026-11-03 | Jalon M3, à la demande de l'utilisateur : `aud = core-api` et `typ: at+jwt` exigés sur l'access token, validation explicite de chaque claim (§8.1, §17) |
+| 2.3 | 2026-11-04 | Jalon M7 : l'autorisation précède la lecture de la requête, 403 avant 400 (§8.11) ; intervalle du journal d'audit et conventions du contrat OpenAPI (§10.2) |
 
 ---
 
@@ -612,6 +613,7 @@ Aucun de ces cas ne bloque le démarrage. Le README demande de retirer les varia
 - `oauth2ResourceServer().jwt()` avec la clé publique RSA.
 - `@EnableMethodSecurity`.
 - **Refus par défaut :** chaque endpoint a un `@PreAuthorize` ou est explicitement public (login, refresh, logout, health). Un test parcourt tous les endpoints enregistrés et échoue si l'un d'eux n'a pas d'entrée dans la matrice du §13.4.
+- **Autorisation avant la lecture de la requête :** le `@PreAuthorize` du contrôleur est évalué avant que Spring MVC lise le corps, les paramètres et les variables de chemin. Sans la permission, la réponse est 403 `forbidden` même si la requête est invalide : un 400 révélerait les règles de validation d'un endpoint interdit. Seule une expression qui lit un argument de la méthode (`#nom`) attend la lecture de la requête ; aucun endpoint de l'API n'en utilise.
 - Les 401 et 403 générés par Spring Security passent par un `AuthenticationEntryPoint` et un `AccessDeniedHandler` qui produisent du Problem Details (§11).
 - Filtres dédiés : contrôle de l'`Origin` sur `/auth/login|refresh|logout`, et contrôle de `pcr` (§8.1).
 - En-têtes de sécurité par défaut de Spring Security conservés, dont l'anti-cache.
@@ -892,6 +894,15 @@ Préfixe `/api/v1`. Format JSON. L'OpenAPI est exposé par springdoc sur `/v3/ap
 - Une `version` qui ne correspond plus renvoie 409 `version-conflict`.
 
 **`PATCH` (utilisateurs uniquement) :** aucun champ n'y est vidable, donc un champ absent reste inchangé et `null` est refusé. Pas de « troisième état » à gérer.
+
+**Journal d'audit :** les filtres se combinent ; `from` est inclus et `to` exclu, si bien que deux intervalles consécutifs ne comptent jamais deux fois la même ligne ; `to` doit être postérieur à `from`. Les égalités de date sont départagées par id, dans le sens du tri.
+
+**Contrat OpenAPI (`contracts/openapi/core-api.yaml`) :**
+
+- Il ne décrit que `/api/**`. Schéma de sécurité `bearer` (JWT) global, retiré (`security: []`) pour login, refresh et logout.
+- Chaque opération déclare son statut de succès (200, 201 ou 204) et une réponse `default` Problem Details (§11).
+- Identifiants d'opération `<ressource><Méthode>` (par exemple `serversCreate`) et clés triées : le fichier ne dépend ni du port ni de l'ordre de découverte des contrôleurs.
+- Les champs exigés seulement en `PUT` (`version`, et `adminStatus` des VPS) n'y sont pas déclarés obligatoires ; leur description donne la règle.
 
 **Autres règles :**
 
